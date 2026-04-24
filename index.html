@@ -1,0 +1,1755 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="theme-color" content="#1D3C6E">
+<link rel="manifest" href="manifest.json">
+<link rel="apple-touch-icon" href="icon.png">
+<title>TrainingsDoku Pro</title>
+
+<style>
+:root {
+  --p:   #1D3C6E;
+  --p2:  #2B5499;
+  --s:   #5B8ED4;
+  --sl:  #E8F0FA;
+  --bg:  #F0F2F5;
+  --card:#FFFFFF;
+  --txt: #1F2937;
+  --mid: #6B7280;
+  --bor: #D1D9E6;
+  --grn: #4A7C59;
+  --red: #C0392B;
+  --ora: #E67E22;
+  --r:   14px;
+  --sh:  0 2px 12px rgba(0,0,0,0.08);
+}
+*{box-sizing:border-box;margin:0;padding:0;}
+body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;background:var(--bg);color:var(--txt);min-height:100vh;padding-bottom:72px;}
+
+/* ── TOPBAR ── */
+.tb{background:var(--p);color:#fff;padding:13px 16px;display:flex;align-items:center;justify-content:space-between;position:sticky;top:0;z-index:100;box-shadow:0 2px 8px rgba(0,0,0,.18);}
+.tb h1{font-size:1.02em;font-weight:600;display:flex;align-items:center;gap:7px;}
+.tb-btn{background:rgba(255,255,255,.2);border:none;color:#fff;padding:6px 12px;border-radius:8px;cursor:pointer;font-size:.88em;text-decoration:none;display:inline-flex;align-items:center;gap:5px;}
+
+/* ── BOTTOM NAV ── */
+.bnav{position:fixed;bottom:0;left:0;right:0;background:#fff;border-top:1px solid var(--bor);display:flex;box-shadow:0 -2px 12px rgba(0,0,0,.07);z-index:100;}
+.bnav a{flex:1;display:flex;flex-direction:column;align-items:center;padding:9px 4px 11px;color:var(--mid);text-decoration:none;font-size:.62em;gap:3px;cursor:pointer;transition:color .2s;}
+.bnav a.act{color:var(--p);}
+.bnav .ni{font-size:1.55em;}
+
+/* ── VIEWS ── */
+.view{display:none;padding:14px;max-width:640px;margin:0 auto;}
+.view.act{display:block;}
+
+/* ── CARDS ── */
+.card{background:var(--card);border-radius:var(--r);padding:16px;margin-bottom:12px;box-shadow:var(--sh);border:1px solid var(--bor);}
+.ct{font-size:.72em;font-weight:700;text-transform:uppercase;letter-spacing:.5px;color:var(--p);margin-bottom:9px;}
+
+/* ── BUTTONS ── */
+.btn{display:inline-flex;align-items:center;justify-content:center;gap:7px;padding:12px 20px;border-radius:11px;font-size:.97em;font-weight:600;border:none;cursor:pointer;text-decoration:none;transition:opacity .2s,transform .1s;-webkit-tap-highlight-color:transparent;}
+.btn:active{transform:scale(.97);opacity:.88;}
+.bp{background:var(--p);color:#fff;}
+.bs{background:var(--s);color:#fff;}
+.bo{background:transparent;color:var(--p);border:2px solid var(--p);}
+.bd{background:var(--red);color:#fff;}
+.bg{background:var(--grn);color:#fff;}
+.bw{background:#25D366;color:#fff;}
+.bf{width:100%;}
+.bsm{padding:8px 13px;font-size:.86em;border-radius:9px;}
+
+/* ── FORM ── */
+.fg{margin-bottom:16px;}
+label{display:block;font-size:.78em;font-weight:700;color:var(--p);text-transform:uppercase;letter-spacing:.4px;margin-bottom:5px;}
+input[type=text],input[type=tel],input[type=email],input[type=date],input[type=color],select,textarea{width:100%;padding:11px 13px;border:1.5px solid var(--bor);border-radius:10px;font-size:.97em;color:var(--txt);background:#fff;-webkit-appearance:none;appearance:none;}
+input:focus,select:focus,textarea:focus{outline:none;border-color:var(--p);}
+textarea{min-height:85px;resize:vertical;line-height:1.5;}
+select{background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='8'%3E%3Cpath d='M1 1l5 5 5-5' stroke='%231D3C6E' stroke-width='2' fill='none' stroke-linecap='round'/%3E%3C/svg%3E");background-repeat:no-repeat;background-position:right 12px center;padding-right:36px;}
+
+/* ── SPEECH ── */
+.spbtn{background:var(--p);color:#fff;border:none;border-radius:14px;padding:16px 22px;font-size:1.08em;font-weight:600;cursor:pointer;display:inline-flex;align-items:center;gap:9px;transition:all .2s;min-height:54px;box-shadow:0 3px 10px rgba(29,60,110,.25);}
+.spbtn.rec{background:var(--red);animation:pulse 1.4s ease-in-out infinite;}
+@keyframes pulse{0%,100%{box-shadow:0 0 0 0 rgba(192,57,43,.4);}50%{box-shadow:0 0 0 8px rgba(192,57,43,0);}}
+.spst{font-size:.8em;color:var(--mid);margin-top:5px;min-height:18px;}
+
+/* ── LIST ITEMS ── */
+.si{display:flex;align-items:center;gap:12px;padding:13px 15px;background:#fff;border-radius:12px;margin-bottom:9px;border:1px solid var(--bor);text-decoration:none;color:var(--txt);box-shadow:var(--sh);cursor:pointer;}
+.si:active{transform:scale(.98);}
+.av{width:44px;height:44px;border-radius:50%;background:var(--p);color:#fff;display:flex;align-items:center;justify-content:center;font-size:1.25em;flex-shrink:0;}
+.si-info{flex:1;min-width:0;}
+.si-name{font-weight:600;font-size:.97em;}
+.si-sub{font-size:.82em;color:var(--mid);}
+.badge{font-size:.7em;padding:3px 9px;border-radius:20px;font-weight:600;white-space:nowrap;}
+.ba{background:#DDEEE5;color:var(--grn);}
+.bp2{background:#FEF0E4;color:var(--ora);}
+.bs2{background:#E3F2E7;color:var(--grn);}
+
+/* ── STARS ── */
+.stars{display:flex;gap:5px;}
+.star{font-size:1.5em;cursor:pointer;-webkit-tap-highlight-color:transparent;color:#CCC;}
+.star.on{color:var(--s);}
+
+/* ── STATS ── */
+.sg{display:grid;grid-template-columns:repeat(3,1fr);gap:9px;margin-bottom:14px;}
+.sc{background:#fff;border-radius:12px;padding:13px 8px;text-align:center;border:1px solid var(--bor);box-shadow:var(--sh);}
+.sn{font-size:1.75em;font-weight:700;color:var(--p);line-height:1;}
+.sl2{font-size:.7em;color:var(--mid);margin-top:3px;}
+
+/* ── TOAST ── */
+#toast{position:fixed;bottom:82px;left:50%;transform:translateX(-50%) translateY(16px);background:#222;color:#fff;padding:13px 22px;border-radius:22px;font-size:.93em;font-weight:500;opacity:0;transition:all .3s;z-index:999;pointer-events:none;white-space:nowrap;box-shadow:0 4px 18px rgba(0,0,0,.25);}
+#toast.show{opacity:1;transform:translateX(-50%) translateY(0);}
+#toast.tok{background:#2E7D32;}
+#toast.terr{background:#C0392B;}
+#toast.tinfo{background:#1565C0;}
+
+/* ── LOADER ── */
+#loader{display:none;position:fixed;inset:0;background:rgba(255,255,255,.82);align-items:center;justify-content:center;z-index:500;flex-direction:column;gap:11px;}
+#loader.show{display:flex;}
+.spin{width:40px;height:40px;border:4px solid var(--bor);border-top-color:var(--p);border-radius:50%;animation:sp .8s linear infinite;}
+@keyframes sp{to{transform:rotate(360deg);}}
+
+/* ── MISC ── */
+.div{border:none;border-top:1px solid var(--bor);margin:14px 0;}
+.empty{text-align:center;padding:44px 20px;color:var(--mid);}
+.empty .ei{font-size:2.8em;margin-bottom:10px;}
+.sh{display:flex;align-items:center;justify-content:space-between;margin-bottom:11px;}
+.stit{font-size:1.03em;font-weight:700;}
+.slink{font-size:.83em;color:var(--p);cursor:pointer;background:none;border:none;}
+.fab{position:fixed;bottom:78px;right:16px;width:54px;height:54px;border-radius:50%;background:var(--p);color:#fff;border:none;font-size:1.5em;display:flex;align-items:center;justify-content:center;box-shadow:0 4px 16px rgba(0,0,0,.22);cursor:pointer;z-index:99;}
+.fab:active{transform:scale(.92);}
+.pv{white-space:pre-line;font-size:1.05em;line-height:1.7;}
+.row2{display:grid;grid-template-columns:1fr 1fr;gap:10px;}
+.info-box{background:var(--sl);border-radius:10px;padding:12px;font-size:.85em;margin-top:6px;}
+</style>
+</head>
+<body>
+
+<!-- TOPBAR (dynamisch) -->
+<div class="tb" id="topbar">
+  <h1 id="tb-title">🐴 TrainingsDoku Pro</h1>
+  <span id="sync-icon" title="Cloud-Status" style="font-size:.95em;cursor:pointer;" onclick="nav('settings')">⬜</span>
+  <div id="tb-right"></div>
+</div>
+
+<!-- VIEWS -->
+<div class="view act" id="v-home"></div>
+<div class="view" id="v-neu"></div>
+<div class="view" id="v-kunden"></div>
+<div class="view" id="v-settings"></div>
+<div class="view" id="v-protokolle"></div>
+
+<!-- BOTTOM NAV -->
+<nav class="bnav">
+  <a onclick="nav('home')" id="nav-home" class="act"><span class="ni">🏠</span>Heute</a>
+  <a onclick="nav('neu')" id="nav-neu"><span class="ni">➕</span>Neu</a>
+  <a onclick="nav('kunden')" id="nav-kunden"><span class="ni">👤</span>Kunden</a>
+  <a onclick="nav('protokolle')" id="nav-protokolle"><span class="ni">📋</span>Protokolle</a>
+  <a onclick="nav('settings')" id="nav-settings"><span class="ni">⚙️</span>Einstellg.</a>
+</nav>
+
+<!-- TOAST & LOADER -->
+<div id="toast"></div>
+<div id="loader" class="loader"><div class="spin"></div><span id="ltext" style="color:var(--p);font-size:.9em;">Bitte warten…</span></div>
+
+<script>
+'use strict';
+
+// ══════════════════════════════════════════════
+// SUPABASE CLOUD
+// ══════════════════════════════════════════════
+const Supa = {
+  get url(){ return localStorage.getItem('td_supa_url')||''; },
+  get key(){ return localStorage.getItem('td_supa_key')||''; },
+
+  isConfigured(){ return !!(this.url && this.key && this.url.includes('supabase.co')); },
+
+  async _req(table, method='GET', body=null, query=''){
+    if(!this.isConfigured()) return null;
+    try{
+      const heads = {
+        'apikey': this.key,
+        'Authorization': `Bearer ${this.key}`,
+        'Content-Type': 'application/json',
+      };
+      if(method==='POST') heads['Prefer']='return=representation,resolution=merge-duplicates';
+      const res = await fetch(`${this.url}/rest/v1/${table}${query}`,{
+        method, headers:heads,
+        body: body ? JSON.stringify(body) : undefined,
+      });
+      if(!res.ok){ console.warn('Supabase err:', await res.text()); return null; }
+      const txt = await res.text();
+      return txt ? JSON.parse(txt) : true;
+    }catch(e){ console.warn('Supabase fetch:', e); return null; }
+  },
+
+  // ── Clients ──
+  getClients(){ return this._req('clients','GET',null,'?select=*&order=name'); },
+  upsertClient(c){ return this._req('clients','POST',c); },
+  delClient(id){ return this._req('clients','DELETE',null,`?id=eq.${id}`); },
+
+  // ── Sessions ──
+  getSessions(){ return this._req('sessions','GET',null,'?select=*&order=date.desc'); },
+  upsertSession(s){
+    return this._req('sessions','POST',{...s, photos: JSON.stringify(s.photos||[])});
+  },
+  delSession(id){ return this._req('sessions','DELETE',null,`?id=eq.${id}`); },
+
+  // ── App-Settings ──
+  getAppSettings(){ return this._req('app_settings','GET',null,'?select=*'); },
+  upsertAppSettings(obj){
+    const rows=Object.entries(obj)
+      .filter(([k])=>!k.startsWith('td_supa'))
+      .map(([key,value])=>({key,value:String(value)}));
+    if(!rows.length) return Promise.resolve(true);
+    return this._req('app_settings','POST',rows);
+  },
+
+  // ── Pull: Cloud → localStorage ──
+  async pullAll(){
+    if(!this.isConfigured()) return false;
+    _syncIcon('⟳');
+    try{
+      const [cloudClients,cloudSessions,settings] = await Promise.all([
+        this.getClients(), this.getSessions(), this.getAppSettings()
+      ]);
+
+      // Merge-Strategie: Cloud ist Wahrheit für bekannte Einträge,
+      // aber lokale Einträge die noch nicht in der Cloud sind, bleiben erhalten
+      if(cloudClients){
+        const cloudIds=new Set(cloudClients.map(c=>String(c.id)));
+        const localOnly=DB.clients().filter(c=>!cloudIds.has(String(c.id)));
+        localStorage.setItem('td_clients', JSON.stringify([...cloudClients, ...localOnly]));
+      }
+      if(cloudSessions){
+        const parsed=cloudSessions.map(s=>({...s,
+          photos: typeof s.photos==='string'? JSON.parse(s.photos||'[]'):(s.photos||[])
+        }));
+        const cloudIds=new Set(parsed.map(s=>String(s.id)));
+        const localOnly=DB.sessions().filter(s=>!cloudIds.has(String(s.id)));
+        localStorage.setItem('td_sessions', JSON.stringify([...parsed, ...localOnly]));
+      }
+      if(settings){
+        const obj=DB.settings();
+        settings.forEach(r=>{ obj[r.key]=r.value; });
+        localStorage.setItem('td_settings', JSON.stringify(obj));
+      }
+      _syncIcon('✅'); return true;
+    }catch(e){ _syncIcon('⚠️'); return false; }
+  },
+
+  // ── Push mit automatischem Retry (1x nach 3 Sekunden) ──
+  push(type, data){
+    if(!this.isConfigured()) return;
+    const run=()=>{
+      let p;
+      if(type==='client')        p=this.upsertClient(data);
+      else if(type==='session')  p=this.upsertSession(data);
+      else if(type==='settings') p=this.upsertAppSettings(data);
+      else if(type==='delClient')p=this.delClient(data);
+      else if(type==='delSession')p=this.delSession(data);
+      return p;
+    };
+    const attempt=run();
+    if(attempt){
+      attempt.then(r=>{
+        if(r){ _syncIcon('✅'); }
+        else{
+          // Erster Versuch fehlgeschlagen → nach 3 Sekunden nochmal
+          setTimeout(()=>{
+            const retry=run();
+            if(retry) retry.then(r2=>_syncIcon(r2?'✅':'⚠️')).catch(()=>_syncIcon('⚠️'));
+          }, 3000);
+        }
+      }).catch(()=>{
+        setTimeout(()=>{
+          const retry=run();
+          if(retry) retry.then(r2=>_syncIcon(r2?'✅':'⚠️')).catch(()=>_syncIcon('⚠️'));
+        }, 3000);
+      });
+    }
+  },
+
+  // ── Push ALL local data to cloud (Bulk-Upsert: nur 3 API-Calls) ──
+  async pushAll(){
+    if(!this.isConfigured()) return {ok:false};
+    _syncIcon('⟳');
+    try{
+      const clients=DB.clients();
+      const sessions=DB.sessions();
+      const settings=DB.settings();
+      const jobs=[];
+      // Bulk-Upsert: Array in einem API-Call
+      if(clients.length) jobs.push(this._req('clients','POST',clients));
+      if(sessions.length) jobs.push(this._req('sessions','POST',
+        sessions.map(s=>({...s, photos:JSON.stringify(s.photos||[])}))
+      ));
+      const settingRows=Object.entries(settings)
+        .filter(([k])=>!k.startsWith('td_supa'))
+        .map(([key,value])=>({key,value:String(value)}));
+      if(settingRows.length) jobs.push(this._req('app_settings','POST',settingRows));
+      const results=await Promise.all(jobs);
+      const allOk=results.every(r=>r!==null);
+      _syncIcon(allOk?'✅':'⚠️');
+      return {ok:allOk, clients:clients.length, sessions:sessions.length};
+    }catch(e){_syncIcon('⚠️'); return {ok:false};}
+  }
+};
+
+function _syncIcon(s){
+  const el=document.getElementById('sync-icon');
+  if(!el) return;
+  const map={'✅':'☁️✅','⚠️':'☁️⚠️','⟳':'☁️⟳'};
+  el.textContent=map[s]||'☁️';
+  clearTimeout(el._t);
+  el._t=setTimeout(()=>el.textContent=Supa.isConfigured()?'☁️':'⬜',3500);
+}
+
+// ══════════════════════════════════════════════
+// DATENBANK (localStorage + Cloud-Sync)
+// ══════════════════════════════════════════════
+const DB = {
+  _get(k){try{return JSON.parse(localStorage.getItem(k)||'[]');}catch{return [];}},
+  _set(k,v){
+    localStorage.setItem(k,JSON.stringify(v));
+  },
+
+  // Settings
+  settings(){try{return JSON.parse(localStorage.getItem('td_settings')||'{}');}catch{return {};}},
+  saveSettings(s){
+    localStorage.setItem('td_settings',JSON.stringify(s));
+    Supa.push('settings',s);
+  },
+  getSetting(k,def=''){return this.settings()[k]??def;},
+
+  // Clients
+  clients(){return this._get('td_clients');},
+  client(id){return this.clients().find(c=>String(c.id)===String(id))||null;},
+  saveClient(c){
+    const list=this.clients();
+    const idx=list.findIndex(x=>String(x.id)===String(c.id));
+    if(idx>=0)list[idx]=c; else list.push(c);
+    this._set('td_clients',list);
+    Supa.push('client',c);
+  },
+  newClient(data){
+    const c={id:Date.now(),...data,created:new Date().toISOString()};
+    this.saveClient(c); return c;
+  },
+  deleteClient(id){
+    this._set('td_clients',this.clients().filter(c=>String(c.id)!==String(id)));
+    this._set('td_sessions',this.sessions().filter(s=>String(s.client_id)!==String(id)));
+    Supa.push('delClient',id);
+  },
+
+  // Sessions
+  sessions(){return this._get('td_sessions');},
+  session(id){return this.sessions().find(s=>String(s.id)===String(id))||null;},
+  saveSession(s){
+    const list=this.sessions();
+    const idx=list.findIndex(x=>String(x.id)===String(s.id));
+    if(idx>=0)list[idx]=s; else list.push(s);
+    this._set('td_sessions',list);
+    Supa.push('session',s);
+  },
+  newSession(data){
+    const s={id:Date.now(),...data,approved:false,sent:false,created:new Date().toISOString()};
+    this.saveSession(s); return s;
+  },
+  deleteSession(id){
+    this._set('td_sessions',this.sessions().filter(s=>String(s.id)!==String(id)));
+    Supa.push('delSession',id);
+  },
+  sessionsByDate(date){return this.sessions().filter(s=>s.date===date);},
+  sessionsByClient(cid){return this.sessions().filter(s=>String(s.client_id)===String(cid)).sort((a,b)=>b.date.localeCompare(a.date));},
+  lastSession(cid){return this.sessionsByClient(cid)[0]||null;},
+  todaySessions(){return this.sessionsByDate(today());},
+
+  // Stats
+  stats(){
+    const s=this.sessions(), tod=this.todaySessions();
+    return {clients:this.clients().length, total:s.length, today:tod.length};
+  }
+};
+
+// ══════════════════════════════════════════════
+// UTILS
+// ══════════════════════════════════════════════
+function today(){return new Date().toISOString().slice(0,10);}
+function fmtDate(d){
+  if(!d)return '';
+  try{const dt=new Date(d+'T12:00:00');return dt.toLocaleDateString('de-DE',{day:'2-digit',month:'long',year:'numeric'});}
+  catch{return d;}
+}
+function esc(s){return (s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');}
+let _toastT;
+function toast(msg,ms=3200,type=''){
+  const t=document.getElementById('toast');
+  t.textContent=msg;
+  t.className='show'+(type?' '+type:'');
+  clearTimeout(_toastT); _toastT=setTimeout(()=>t.classList.remove('show'),ms);
+}
+function loader(show,txt='Bitte warten…'){
+  document.getElementById('loader').style.display=show?'flex':'none';
+  document.getElementById('ltext').textContent=txt;
+}
+
+// Button sperren während Speichervorgang → verhindert Doppelklick
+function lockBtn(btn, txt='⏳ Wird gespeichert…'){
+  if(!btn) return;
+  btn.disabled=true;
+  btn._origTxt=btn.textContent;
+  btn.textContent=txt;
+  btn.style.opacity='0.6';
+}
+function unlockBtn(btn){
+  if(!btn) return;
+  btn.disabled=false;
+  btn.textContent=btn._origTxt||btn.textContent;
+  btn.style.opacity='';
+}
+
+// Deutlichere Erfolgsanzeige: Toast + Button wird kurz grün
+function confirmSaved(msg='✅ Gespeichert!', btn=null){
+  toast(msg, 3500, 'tok');
+  if(btn){
+    btn.disabled=false;
+    btn.style.opacity='';
+    const orig=btn._origTxt||btn.textContent;
+    btn.textContent='✅ Gespeichert!';
+    btn.style.background='#2E7D32';
+    btn.style.color='#fff';
+    setTimeout(()=>{
+      btn.textContent=orig;
+      btn.style.background='';
+      btn.style.color='';
+    }, 2000);
+  }
+}
+function confirm2(msg){return window.confirm(msg);}
+
+// ══════════════════════════════════════════════
+// ROUTER / NAVIGATION
+// ══════════════════════════════════════════════
+let currentView='home';
+let viewStack=[];
+
+function nav(view,data=null){
+  ['home','neu','kunden','protokolle','settings'].forEach(v=>{
+    document.getElementById('v-'+v).classList.toggle('act',v===view);
+    document.getElementById('nav-'+v).classList.toggle('act',v===view);
+  });
+  currentView=view;
+  render(view,data);
+}
+
+function render(view,data){
+  switch(view){
+    case 'home':        renderHome(); break;
+    case 'neu':         renderNeu(data); break;
+    case 'kunden':      renderKunden(data); break;
+    case 'protokolle':  renderProtokolle(data); break;
+    case 'settings':    renderSettings(); break;
+  }
+}
+
+function setTopbar(title,right=''){
+  document.getElementById('tb-title').innerHTML=title;
+  document.getElementById('tb-right').innerHTML=right;
+}
+
+// ══════════════════════════════════════════════
+// VIEW: HOME / DASHBOARD
+// ══════════════════════════════════════════════
+function renderHome(){
+  setTopbar('🐴 TrainingsDoku Pro','<button class="tb-btn" onclick="nav(\'neu\')">+ Neu</button>');
+  const stats=DB.stats();
+  const sessions=DB.todaySessions();
+
+  const scStyle='cursor:pointer;transition:transform .15s,box-shadow .15s;';
+  const scHover='onmousedown="this.style.transform=\'scale(.96)\'" onmouseup="this.style.transform=\'\'" ontouchstart="this.style.transform=\'scale(.96)\'" ontouchend="this.style.transform=\'\'"';
+  let html=`<div class="sg">
+    <div class="sc" style="${scStyle}" ${scHover} onclick="document.getElementById('v-home').querySelector('.stit')?.scrollIntoView({behavior:'smooth'})">
+      <div class="sn">${stats.today}</div><div class="sl2">Heute</div></div>
+    <div class="sc" style="${scStyle}" ${scHover} onclick="nav('kunden')">
+      <div class="sn">${stats.clients}</div><div class="sl2">Kunden</div></div>
+    <div class="sc" style="${scStyle}" ${scHover} onclick="nav('protokolle')">
+      <div class="sn">${stats.total}</div><div class="sl2">Gesamt</div></div>
+  </div>`;
+
+  html+=`<div class="sh"><div class="stit">📅 Heutige Einheiten</div>
+    <span style="font-size:.8em;color:var(--mid);">${today()}</span></div>`;
+
+  if(sessions.length){
+    sessions.forEach(s=>{
+      const c=DB.client(s.client_id);
+      html+=`<div class="si" onclick="showSession(${s.id})">
+        <div class="av">🐴</div>
+        <div class="si-info">
+          <div class="si-name">${esc(s.horse_name)}</div>
+          <div class="si-sub">${esc(c?c.name:'Unbekannt')}</div>
+        </div>
+        <span style="color:var(--mid);font-size:1.2em;">›</span>
+      </div>`;
+    });
+  } else {
+    html+=`<div class="empty"><div class="ei">🌅</div>
+      <div style="font-weight:600;margin-bottom:8px;">Noch keine Einheiten heute</div>
+      <p style="margin-bottom:18px;">Starte deine erste Trainingsdokumentation!</p>
+      <button class="btn bp" onclick="nav('neu')">+ Neue Einheit</button></div>`;
+  }
+
+  if(sessions.length){
+    html+=`<div style="margin-top:18px;">
+      <button class="btn bp bf" onclick="nav('neu')">🎙️ Neue Trainingseinheit</button></div>`;
+  }
+
+  document.getElementById('v-home').innerHTML=html;
+}
+
+// ══════════════════════════════════════════════
+// VIEW: NEUE EINHEIT
+// ══════════════════════════════════════════════
+let neuPhotos=[]; // base64 strings
+let _inForm=false; // true wenn Formular offen → kein Auto-Sync-Render
+
+function renderNeu(prefillClientId=null){
+  _inForm=true;
+  setTopbar('‹ <span style="cursor:pointer;" onclick="nav(\'home\')">Zurück</span> &nbsp; 🎙️ Neue Einheit','');
+  document.getElementById('tb-title').onclick=()=>nav('home');
+
+  const clients=DB.clients();
+  let optHtml=clients.length
+    ? clients.map(c=>`<option value="${c.id}" ${prefillClientId===c.id?'selected':''}>${esc(c.horse_name)} – ${esc(c.name)}</option>`).join('')
+    : '';
+
+  neuPhotos=[];
+
+  document.getElementById('v-neu').innerHTML=`
+  <div class="fg">
+    <label>Kunde / Pferd</label>
+    ${clients.length
+      ? `<select id="n-client"><option value="">— Bitte wählen —</option>${optHtml}</select>`
+      : `<div class="info-box" style="margin-bottom:8px;">⚠️ Noch keine Kunden angelegt.</div>`}
+    <div style="margin-top:7px;"><button class="btn bo bsm" onclick="showNewClient()">+ Neuen Kunden anlegen</button></div>
+  </div>
+
+  <div class="fg row2">
+    <div><label>Datum</label><input type="date" id="n-date" value="${today()}"></div>
+    <div><label>Ort (opt.)</label><input type="text" id="n-loc" placeholder="z. B. Hof Müller"></div>
+  </div>
+
+  <hr class="div">
+
+  <div class="fg">
+    <label>⚠️ Auffälligkeiten</label>
+    <div style="display:flex;gap:8px;margin-bottom:7px;align-items:center;">
+      <button class="spbtn" id="sp-obs" onclick="toggleSpeech('n-obs','sp-obs','st-obs')">🎙️ Diktieren</button>
+      <span class="spst" id="st-obs"></span>
+    </div>
+    <textarea id="n-obs" placeholder="Verhaltensmuster, Bewegungsauffälligkeiten, Gesundheitliches…"></textarea>
+  </div>
+
+  <div class="fg">
+    <label>🎯 Schwerpunkte der Einheit</label>
+    <div style="display:flex;gap:8px;margin-bottom:7px;align-items:center;">
+      <button class="spbtn" id="sp-ex" onclick="toggleSpeech('n-ex','sp-ex','st-ex')">🎙️ Diktieren</button>
+      <span class="spst" id="st-ex"></span>
+    </div>
+    <textarea id="n-ex" placeholder="Was wurde heute trainiert, geübt, erarbeitet…"></textarea>
+  </div>
+
+  <div class="fg">
+    <label>📚 Hausaufgaben bis zum nächsten Termin</label>
+    <div style="display:flex;gap:8px;margin-bottom:7px;align-items:center;">
+      <button class="spbtn" id="sp-hw" onclick="toggleSpeech('n-hw','sp-hw','st-hw')">🎙️ Diktieren</button>
+      <span class="spst" id="st-hw"></span>
+    </div>
+    <textarea id="n-hw" placeholder="Übungen, Aufgaben, Empfehlungen für zu Hause…"></textarea>
+  </div>
+
+  <hr class="div">
+
+  <div class="fg">
+    <label>⭐ Einschätzung der Einheit</label>
+    <div class="stars" id="star-row">
+      ${[1,2,3,4,5].map(i=>`<span class="star" data-v="${i}" onclick="setStar(${i})">☆</span>`).join('')}
+    </div>
+    <input type="hidden" id="n-rating" value="0">
+  </div>
+
+  <div class="fg">
+    <label>📌 Fokus der nächsten Einheit (optional)</label>
+    <textarea id="n-notes" placeholder="Was soll beim nächsten Mal besonders beachtet werden?" rows="2"></textarea>
+  </div>
+
+  <div class="fg">
+    <label>📸 Fotos (optional, max. 3)</label>
+    <input type="file" id="photo-input" accept="image/*" multiple style="display:none;" onchange="handlePhotos(this)">
+    <button class="btn bo bf" onclick="document.getElementById('photo-input').click()">📷 Fotos auswählen</button>
+    <div id="photo-prev" style="display:flex;gap:8px;flex-wrap:wrap;margin-top:9px;"></div>
+  </div>
+
+  <button class="btn bp bf" onclick="saveNeu()" style="margin-bottom:9px;">💾 Protokoll speichern</button>
+  <button class="btn bo bf" onclick="nav('home')">Abbrechen</button>
+  <div style="height:10px;"></div>`;
+}
+
+let _star=0;
+function setStar(v){
+  _star=v;
+  document.getElementById('n-rating').value=v;
+  document.querySelectorAll('#star-row .star').forEach(s=>{
+    const sv=parseInt(s.dataset.v);
+    s.textContent=sv<=v?'⭐':'☆';
+    s.classList.toggle('on',sv<=v);
+  });
+}
+
+// Foto komprimieren: max. 800px, JPEG 70% → spart ~90% Speicher
+function _compressPhoto(dataUrl, cb){
+  const img=new Image();
+  img.onload=()=>{
+    const MAX=800;
+    let w=img.width, h=img.height;
+    if(w>MAX||h>MAX){ if(w>h){h=Math.round(h*MAX/w);w=MAX;}else{w=Math.round(w*MAX/h);h=MAX;} }
+    const c=document.createElement('canvas');
+    c.width=w; c.height=h;
+    c.getContext('2d').drawImage(img,0,0,w,h);
+    cb(c.toDataURL('image/jpeg',0.70));
+  };
+  img.onerror=()=>cb(dataUrl); // Fallback: Original
+  img.src=dataUrl;
+}
+
+function handlePhotos(input){
+  const prev=document.getElementById('photo-prev');
+  prev.innerHTML=''; neuPhotos=[];
+  Array.from(input.files).slice(0,3).forEach(f=>{
+    const r=new FileReader();
+    r.onload=e=>{
+      _compressPhoto(e.target.result, compressed=>{
+        neuPhotos.push(compressed);
+        const img=document.createElement('img');
+        img.src=compressed;
+        img.style.cssText='width:76px;height:76px;object-fit:cover;border-radius:8px;border:2px solid var(--bor)';
+        prev.appendChild(img);
+      });
+    };
+    r.readAsDataURL(f);
+  });
+}
+
+async function saveNeu(){
+  const btn=document.querySelector('#v-neu .btn.bp, #v-kunden .btn.bp');
+  if(btn?.disabled) return;
+  lockBtn(btn);
+  const safetyTimer=setTimeout(()=>{ unlockBtn(btn); toast('⚠️ Zeitüberschreitung – bitte erneut versuchen',4000,'terr'); }, 10000);
+  try{
+    const clientId=parseInt(document.getElementById('n-client')?.value||0);
+    if(!clientId){ clearTimeout(safetyTimer); unlockBtn(btn); toast('⚠️ Bitte Kunden auswählen'); return; }
+    const client=DB.client(clientId);
+    if(!client){ clearTimeout(safetyTimer); unlockBtn(btn); toast('⚠️ Kunden nicht gefunden'); return; }
+
+    const s=DB.newSession({
+      client_id:clientId,
+      horse_name:client.horse_name,
+      date:document.getElementById('n-date')?.value||today(),
+      location:document.getElementById('n-loc')?.value||'',
+      observations:document.getElementById('n-obs')?.value||'',
+      exercises_done:document.getElementById('n-ex')?.value||'',
+      homework:document.getElementById('n-hw')?.value||'',
+      rating:parseInt(document.getElementById('n-rating')?.value||0),
+      notes:document.getElementById('n-notes')?.value||'',
+      photos:[...neuPhotos],
+    });
+    clearTimeout(safetyTimer);
+    _inForm=false;
+    confirmSaved('✅ Protokoll gespeichert!', btn);
+    _star=0; neuPhotos=[];
+    setTimeout(()=>showSession(s.id),1800);
+  }catch(e){
+    clearTimeout(safetyTimer);
+    unlockBtn(btn);
+    if(e.name==='QuotaExceededError'||e.message?.includes('quota')){
+      toast('❌ Gerätespeicher voll! Fotos aus alten Protokollen löschen.',7000,'terr');
+    } else {
+      toast('❌ Speicherfehler: '+(e.message||'Unbekannt'),5000,'terr');
+      console.error('saveNeu:', e);
+    }
+  }
+}
+
+// ══════════════════════════════════════════════
+// SESSION DETAIL (Modal-ähnlich)
+// ══════════════════════════════════════════════
+function showSession(id){
+  const s=DB.session(id);
+  if(!s)return;
+  const c=DB.client(s.client_id);
+  const stars='⭐'.repeat(s.rating||0)+'☆'.repeat(5-(s.rating||0));
+
+  setTopbar(`‹ <span style="cursor:pointer;" onclick="nav('${currentView}')">Zurück</span> &nbsp; 📋 Protokoll`,
+    `<button class="tb-btn" onclick="editSession(${id})">✏️</button>`);
+
+  // Session-View temporär übernehmen
+  const activeViewId='v-'+currentView;
+  const prevContent=document.getElementById(activeViewId).innerHTML;
+
+  document.getElementById(activeViewId).innerHTML=`
+  <div class="card">
+    <div style="display:flex;align-items:center;gap:12px;margin-bottom:13px;">
+      <div class="av" style="width:52px;height:52px;font-size:1.7em;">🐴</div>
+      <div style="flex:1;">
+        <div style="font-size:1.2em;font-weight:700;">${esc(s.horse_name)}</div>
+        <div style="font-size:.9em;color:var(--mid);">${esc(c?c.name:'')}</div>
+      </div>
+    </div>
+    <div class="row2">
+      <div><div style="font-size:.72em;text-transform:uppercase;color:var(--p);font-weight:700;margin-bottom:3px;">Datum</div>
+      <div style="font-size:1.05em;">${fmtDate(s.date)}</div></div>
+      ${s.location?`<div><div style="font-size:.72em;text-transform:uppercase;color:var(--p);font-weight:700;margin-bottom:3px;">Ort</div>
+      <div style="font-size:1.05em;">${esc(s.location)}</div></div>`:''}
+      ${s.rating?`<div><div style="font-size:.72em;text-transform:uppercase;color:var(--p);font-weight:700;margin-bottom:3px;">Einschätzung</div>
+      <div>${stars}</div></div>`:''}
+    </div>
+  </div>
+
+  ${s.observations?`<div class="card"><div class="ct">⚠️ Auffälligkeiten</div><p class="pv">${esc(s.observations)}</p></div>`:''}
+  ${s.exercises_done?`<div class="card"><div class="ct">🎯 Schwerpunkte</div><p class="pv">${esc(s.exercises_done)}</p></div>`:''}
+  ${s.homework?`<div class="card"><div class="ct">📚 Hausaufgaben</div><p class="pv">${esc(s.homework)}</p></div>`:''}
+  ${s.notes?`<div class="card"><div class="ct">📌 Fokus der nächsten Einheit</div><p class="pv">${esc(s.notes)}</p></div>`:''}
+
+  ${(s.photos&&s.photos.length)?`<div class="card"><div class="ct">📸 Fotos</div>
+    <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:6px;">
+    ${s.photos.map(p=>`<img src="${p}" style="width:90px;height:90px;object-fit:cover;border-radius:9px;">`).join('')}
+    </div></div>`:''}
+
+  <div class="card">
+    <div class="ct">Aktionen</div>
+    <button class="btn bo bf" onclick="shareProtokoll(${id})" style="margin-bottom:8px;">📤 Per WhatsApp / Text teilen</button>
+    <button class="btn bo bf" onclick="generatePDF(${id})" style="margin-bottom:8px;">📄 Als PDF speichern</button>
+    ${(s.observations||s.homework||s.exercises_done||s.notes)?`<button class="btn bo bf" id="tts-btn" onclick="speakSession(${id})" style="margin-bottom:8px;">🔊 Vorlesen (Vorbereitung)</button>`:''}
+    <button class="btn bd bf" onclick="delSession(${id},'${activeViewId}')">🗑️ Protokoll löschen</button>
+  </div>
+  <button class="btn bo bf" onclick="showClientDetail(${s.client_id},'${activeViewId}')">👤 Zum Kundenprofil</button>
+  <div style="height:10px;"></div>`;
+
+  // Back-Handler für Topbar
+  document.getElementById('tb-title').onclick=()=>{
+    document.getElementById(activeViewId).innerHTML=prevContent;
+    setTopbar(currentView==='home'?'🐴 TrainingsDoku Pro':
+      currentView==='kunden'?'👤 Kunden':'📋','');
+    render(currentView);
+  };
+}
+
+function delSession(id){
+  if(!confirm2('Protokoll wirklich löschen?'))return;
+  DB.deleteSession(id);
+  toast('Gelöscht');
+  nav(currentView);
+}
+
+// ══════════════════════════════════════════════
+// SESSION BEARBEITEN
+// ══════════════════════════════════════════════
+let editPhotos=[];
+function editSession(id){
+  _inForm=true;
+  const s=DB.session(id);
+  if(!s)return;
+  editPhotos=s.photos?[...s.photos]:[];
+
+  setTopbar('‹ <span style="cursor:pointer;" onclick="showSession('+id+')">Zurück</span> &nbsp; ✏️ Bearbeiten','');
+  document.getElementById('tb-title').onclick=()=>showSession(id);
+
+  const activeViewId='v-'+currentView;
+  const stars=[1,2,3,4,5].map(i=>`<span class="star ${(s.rating&&i<=s.rating)?'on':''}" data-v="${i}" onclick="setStarEdit(${i})">${(s.rating&&i<=s.rating)?'⭐':'☆'}</span>`).join('');
+
+  document.getElementById(activeViewId).innerHTML=`
+  <div class="fg"><label>📍 Ort (optional)</label>
+    <input type="text" id="e-loc" value="${esc(s.location||'')}"></div>
+
+  <div class="fg">
+    <label>⚠️ Auffälligkeiten</label>
+    <div style="display:flex;gap:8px;margin-bottom:7px;">
+      <button class="spbtn" id="sp-eobs" onclick="toggleSpeech('e-obs','sp-eobs','st-eobs')">🎙️ Diktieren</button>
+      <span class="spst" id="st-eobs"></span>
+    </div>
+    <textarea id="e-obs">${esc(s.observations||'')}</textarea>
+  </div>
+
+  <div class="fg">
+    <label>🎯 Schwerpunkte</label>
+    <div style="display:flex;gap:8px;margin-bottom:7px;">
+      <button class="spbtn" id="sp-eex" onclick="toggleSpeech('e-ex','sp-eex','st-eex')">🎙️ Diktieren</button>
+      <span class="spst" id="st-eex"></span>
+    </div>
+    <textarea id="e-ex">${esc(s.exercises_done||'')}</textarea>
+  </div>
+
+  <div class="fg">
+    <label>📚 Hausaufgaben</label>
+    <div style="display:flex;gap:8px;margin-bottom:7px;">
+      <button class="spbtn" id="sp-ehw" onclick="toggleSpeech('e-hw','sp-ehw','st-ehw')">🎙️ Diktieren</button>
+      <span class="spst" id="st-ehw"></span>
+    </div>
+    <textarea id="e-hw">${esc(s.homework||'')}</textarea>
+  </div>
+
+  <div class="fg">
+    <label>⭐ Einschätzung</label>
+    <div class="stars" id="estar-row">${stars}</div>
+    <input type="hidden" id="e-rating" value="${s.rating||0}">
+  </div>
+
+  <div class="fg"><label>📌 Fokus der nächsten Einheit</label>
+    <textarea id="e-notes" rows="2">${esc(s.notes||'')}</textarea></div>
+
+  <div class="fg">
+    <label>📸 Fotos (max. 3)</label>
+    <input type="file" id="ephoto-input" accept="image/*" multiple style="display:none;" onchange="handleEditPhotos(this)">
+    <button class="btn bo bf" onclick="document.getElementById('ephoto-input').click()">📷 Fotos ersetzen</button>
+    <div id="ephoto-prev" style="display:flex;gap:8px;flex-wrap:wrap;margin-top:9px;">
+    ${editPhotos.map(p=>`<img src="${p}" style="width:76px;height:76px;object-fit:cover;border-radius:8px;border:2px solid var(--bor);">`).join('')}
+    </div>
+  </div>
+
+  <button class="btn bp bf" onclick="saveEdit(${id})" style="margin-bottom:9px;">💾 Änderungen speichern</button>
+  <button class="btn bo bf" onclick="showSession(${id})">Abbrechen</button>
+  <div style="height:10px;"></div>`;
+}
+
+let _estar=0;
+function setStarEdit(v){
+  _estar=v;
+  document.getElementById('e-rating').value=v;
+  document.querySelectorAll('#estar-row .star').forEach(s=>{
+    const sv=parseInt(s.dataset.v);
+    s.textContent=sv<=v?'⭐':'☆';
+    s.classList.toggle('on',sv<=v);
+  });
+}
+function handleEditPhotos(input){
+  const prev=document.getElementById('ephoto-prev');
+  prev.innerHTML=''; editPhotos=[];
+  Array.from(input.files).slice(0,3).forEach(f=>{
+    const r=new FileReader();
+    r.onload=e=>{
+      _compressPhoto(e.target.result, compressed=>{
+        editPhotos.push(compressed);
+        const img=document.createElement('img');
+        img.src=compressed;
+        img.style.cssText='width:76px;height:76px;object-fit:cover;border-radius:8px;border:2px solid var(--bor)';
+        prev.appendChild(img);
+      });
+    };
+    r.readAsDataURL(f);
+  });
+}
+function saveEdit(id){
+  const btn=document.querySelector('button[onclick^="saveEdit"]');
+  if(btn?.disabled) return;
+  lockBtn(btn);
+  const safetyTimer=setTimeout(()=>{ unlockBtn(btn); toast('⚠️ Zeitüberschreitung – bitte erneut versuchen',4000,'terr'); }, 10000);
+  try{
+    const s=DB.session(id);
+    if(!s){ clearTimeout(safetyTimer); unlockBtn(btn); return; }
+    s.location=document.getElementById('e-loc')?.value||'';
+    s.observations=document.getElementById('e-obs')?.value||'';
+    s.exercises_done=document.getElementById('e-ex')?.value||'';
+    s.homework=document.getElementById('e-hw')?.value||'';
+    s.rating=parseInt(document.getElementById('e-rating')?.value||0);
+    s.notes=document.getElementById('e-notes')?.value||'';
+    s.photos=[...editPhotos];
+    _inForm=false;
+    DB.saveSession(s);
+    clearTimeout(safetyTimer);
+    confirmSaved('✅ Änderungen gespeichert!', btn);
+    setTimeout(()=>showSession(id),1500);
+  }catch(e){
+    clearTimeout(safetyTimer);
+    unlockBtn(btn);
+    if(e.name==='QuotaExceededError'||e.message?.includes('quota')){
+      toast('❌ Gerätespeicher voll! Fotos aus alten Protokollen löschen.',7000,'terr');
+    } else {
+      toast('❌ Speicherfehler: '+(e.message||'Unbekannt'),5000,'terr');
+      console.error('saveEdit:', e);
+    }
+  }
+}
+
+// ══════════════════════════════════════════════
+// VIEW: KUNDEN
+// ══════════════════════════════════════════════
+function renderKunden(query=''){
+  setTopbar('👤 Kunden','<button class="tb-btn" onclick="showNewClient()">+ Neu</button>');
+  let clients=DB.clients();
+  if(query){
+    const q=query.toLowerCase();
+    clients=clients.filter(c=>c.name.toLowerCase().includes(q)||c.horse_name.toLowerCase().includes(q));
+  }
+
+  let html=`<div class="fg"><input type="text" id="ksearch" placeholder="🔍 Pferd oder Kunde suchen…" value="${esc(query)}" oninput="renderKunden(this.value)"></div>`;
+
+  if(clients.length){
+    clients.forEach(c=>{
+      html+=`<div class="si" onclick="showClientDetail(${c.id})">
+        <div class="av">🐴</div>
+        <div class="si-info">
+          <div class="si-name">${esc(c.horse_name)}</div>
+          <div class="si-sub">${esc(c.name)}${c.phone?' · '+esc(c.phone):''}</div>
+        </div>
+        <span style="color:var(--mid);font-size:1.2em;">›</span>
+      </div>`;
+    });
+  } else {
+    html+=`<div class="empty"><div class="ei">🐴</div>
+      ${query?`<div style="font-weight:600;margin-bottom:8px;">Kein Treffer für „${esc(query)}"</div><button class="btn bo" onclick="renderKunden('')">Alle Kunden</button>`
+             :`<div style="font-weight:600;margin-bottom:8px;">Noch keine Kunden</div><button class="btn bp" onclick="showNewClient()">+ Ersten Kunden anlegen</button>`}</div>`;
+  }
+
+  document.getElementById('v-kunden').innerHTML=html;
+  // FAB
+  if(!document.getElementById('kunden-fab')){
+    const fab=document.createElement('button');
+    fab.id='kunden-fab'; fab.className='fab'; fab.textContent='+';
+    fab.onclick=()=>showNewClient();
+    document.body.appendChild(fab);
+  }
+}
+
+// ══════════════════════════════════════════════
+// VIEW: ALLE PROTOKOLLE
+// ══════════════════════════════════════════════
+function renderProtokolle(query=''){
+  setTopbar('📋 Alle Protokolle','');
+  let sessions=[...DB.sessions()].sort((a,b)=>b.date.localeCompare(a.date));
+  if(query){
+    const q=query.toLowerCase();
+    sessions=sessions.filter(s=>{
+      const c=DB.client(s.client_id);
+      return s.horse_name.toLowerCase().includes(q)||
+             s.date.includes(q)||
+             (c&&c.name.toLowerCase().includes(q));
+    });
+  }
+  let html=`<div class="fg"><input type="text" id="psearch" placeholder="🔍 Pferd, Kunde oder Datum…" value="${esc(query)}" oninput="renderProtokolle(this.value)"></div>`;
+  if(sessions.length){
+    sessions.forEach(s=>{
+      const c=DB.client(s.client_id);
+      const stars=s.rating?'⭐'.repeat(s.rating):'';
+      html+=`<div class="si" style="cursor:default;padding:0;overflow:hidden;gap:0;">
+        <div style="flex:1;display:flex;align-items:center;gap:12px;padding:13px 15px;cursor:pointer;" onclick="showSession(${s.id})">
+          <div class="av">📅</div>
+          <div class="si-info">
+            <div class="si-name">${esc(s.horse_name)}</div>
+            <div class="si-sub">${fmtDate(s.date)}${c?' · '+esc(c.name):''}${stars?' · '+stars:''}</div>
+          </div>
+          <span style="color:var(--mid);font-size:1.2em;">›</span>
+        </div>
+        <button style="background:var(--red);color:#fff;border:none;padding:0 16px;align-self:stretch;font-size:1.1em;cursor:pointer;flex-shrink:0;" onclick="delSession(${s.id})">🗑️</button>
+      </div>`;
+    });
+  } else {
+    html+=`<div class="empty"><div class="ei">📋</div>
+      ${query
+        ?`<div style="font-weight:600;margin-bottom:8px;">Kein Treffer für „${esc(query)}"</div><button class="btn bo" onclick="renderProtokolle('')">Alle Protokolle</button>`
+        :`<div style="font-weight:600;margin-bottom:8px;">Noch keine Protokolle</div><button class="btn bp" onclick="nav('neu')">+ Erste Einheit anlegen</button>`}
+    </div>`;
+  }
+  document.getElementById('v-protokolle').innerHTML=html;
+}
+
+function showClientDetail(cid){
+  const c=DB.client(cid);
+  if(!c)return;
+  const sessions=DB.sessionsByClient(cid);
+  const last=sessions[0]||null;
+
+  const prevView=currentView;
+  setTopbar(`‹ <span style="cursor:pointer;" onclick="nav('${prevView}')">Zurück</span> &nbsp; 🐴 ${esc(c.horse_name)}`,
+    `<button class="tb-btn" onclick="showEditClient(${cid})">✏️</button>`);
+
+  const activeEl=document.getElementById('v-'+prevView);
+  const prev=activeEl.innerHTML;
+
+  activeEl.innerHTML=`
+  <div class="card">
+    <div style="display:flex;align-items:center;gap:13px;margin-bottom:13px;">
+      <div class="av" style="width:56px;height:56px;font-size:1.8em;">🐴</div>
+      <div><div style="font-size:1.2em;font-weight:700;">${esc(c.horse_name)}</div>
+      <div style="font-size:.9em;color:var(--mid);">${esc(c.name)}</div></div>
+    </div>
+    ${c.phone?`<div style="margin-bottom:7px;font-size:.9em;">📞 <a href="tel:${esc(c.phone)}" style="color:var(--p);">${esc(c.phone)}</a></div>`:''}
+    ${c.email?`<div style="margin-bottom:7px;font-size:.9em;">✉️ <a href="mailto:${esc(c.email)}" style="color:var(--p);">${esc(c.email)}</a></div>`:''}
+    ${c.address?`<div style="font-size:.9em;margin-bottom:7px;">📍 ${esc(c.address)}</div>`:''}
+    ${c.notes?`<hr class="div"><div style="font-size:.86em;color:var(--mid);">${esc(c.notes)}</div>`:''}
+  </div>
+
+  <div style="display:flex;gap:9px;margin-bottom:14px;">
+    <button class="btn bp" style="flex:1;" onclick="nav('neu',${cid})">🎙️ Neue Einheit</button>
+    ${last?`<button class="btn bo" style="flex:1;" onclick="speakClientLast(${cid})">🔊 Letzte Doku</button>`:''}
+  </div>
+
+  ${last?`<div class="card" style="border-left:4px solid var(--s);">
+    <div class="ct">📋 Letzte Einheit – ${fmtDate(last.date)}</div>
+    ${last.observations?`<div style="margin-bottom:9px;"><div style="font-size:.72em;color:var(--p);font-weight:700;margin-bottom:3px;">AUFFÄLLIGKEITEN</div>
+    <div style="font-size:.9em;">${esc(last.observations.slice(0,200))}${last.observations.length>200?'…':''}</div></div>`:''}
+    ${last.homework?`<div><div style="font-size:.72em;color:var(--p);font-weight:700;margin-bottom:3px;">HAUSAUFGABEN</div>
+    <div style="font-size:.9em;">${esc(last.homework.slice(0,200))}${last.homework.length>200?'…':''}</div></div>`:''}
+    <button class="btn bo bsm" style="margin-top:11px;" onclick="showSession(${last.id})">Vollständig ansehen</button>
+  </div>`:''}
+
+  <div class="sh"><div class="stit">📂 Verlauf (${sessions.length} Einheiten)</div></div>
+  ${sessions.length?sessions.map((s,i)=>`
+    <div class="si" onclick="showSession(${s.id})">
+      <div style="width:36px;height:36px;border-radius:50%;background:var(--bg);border:2px solid var(--s);display:flex;align-items:center;justify-content:center;font-size:.85em;flex-shrink:0;">${i+1}</div>
+      <div class="si-info">
+        <div class="si-name" style="font-size:.93em;">${fmtDate(s.date)}</div>
+        ${s.homework?`<div class="si-sub">📚 ${esc(s.homework.slice(0,60))}${s.homework.length>60?'…':''}</div>`
+          :s.observations?`<div class="si-sub">⚠️ ${esc(s.observations.slice(0,60))}${s.observations.length>60?'…':''}</div>`:''}
+      </div>
+      <span class="badge ${s.sent?'bs2':s.approved?'ba':'bp2'}">${s.sent?'📲':s.approved?'✅':'⏳'}</span>
+    </div>`).join('')
+    :`<div class="empty" style="padding:20px;"><div>Noch keine Einheiten</div></div>`}
+
+  <div style="margin-top:18px;">
+    <button class="btn bd bf" onclick="delClient(${cid})">🗑️ Kunden löschen</button>
+  </div>
+  <div style="height:10px;"></div>`;
+
+  document.getElementById('tb-title').onclick=()=>{
+    activeEl.innerHTML=prev;
+    setTopbar('👤 Kunden','<button class="tb-btn" onclick="showNewClient()">+ Neu</button>');
+  };
+}
+
+function delClient(id){
+  if(!confirm2('Kunden und alle Protokolle wirklich löschen?'))return;
+  DB.deleteClient(id);
+  toast('Gelöscht');
+  nav('kunden');
+}
+
+function speakClientLast(cid){
+  const s=DB.lastSession(cid);
+  if(!s){toast('Keine Doku vorhanden');return;}
+  const c=DB.client(cid);
+  const text=`Letzte Einheit mit ${c?c.horse_name:''} am ${fmtDate(s.date)}. Auffälligkeiten: ${s.observations||'keine'}. Hausaufgaben: ${s.homework||'keine'}`;
+  speakText(text);
+}
+
+// ── Neuer Kunde ──────────────────────────────
+function showNewClient(){
+  _inForm=true;
+  const prevView=currentView;
+  setTopbar('‹ <span style="cursor:pointer;" onclick="nav(\''+prevView+'\')">Zurück</span> &nbsp; ➕ Neuer Kunde','');
+  const activeEl=document.getElementById('v-'+prevView);
+  const prev=activeEl.innerHTML;
+
+  activeEl.innerHTML=`
+  <div class="fg"><label>🐴 Name des Pferdes *</label><input type="text" id="nc-horse" placeholder="z. B. Sturm"></div>
+  <div class="fg"><label>👤 Besitzer *</label><input type="text" id="nc-name" placeholder="Vor- und Nachname"></div>
+  <div class="fg"><label>📞 Telefon / WhatsApp</label><input type="tel" id="nc-phone" placeholder="0151 23456789"></div>
+  <div class="fg"><label>✉️ E-Mail</label><input type="email" id="nc-email" placeholder="name@beispiel.de"></div>
+  <div class="fg"><label>📍 Adresse / Hof</label><input type="text" id="nc-addr" placeholder="Hof Sonnenblume, Musterstr. 1"></div>
+  <div class="fg"><label>💬 Notizen</label><textarea id="nc-notes" rows="3" placeholder="Rasse, Alter, Besonderheiten…"></textarea></div>
+  <button class="btn bp bf" onclick="saveNewClient()" style="margin-bottom:9px;">💾 Kunden speichern</button>
+  <button class="btn bo bf" onclick="nav('${prevView}')">Abbrechen</button>`;
+
+  document.getElementById('tb-title').onclick=()=>{
+    activeEl.innerHTML=prev;
+    nav(prevView);
+  };
+}
+
+function saveNewClient(){
+  const btn=document.querySelector('button[onclick="saveNewClient()"]');
+  if(btn?.disabled) return;
+  lockBtn(btn);
+  _inForm=false;
+  const horse=document.getElementById('nc-horse').value.trim();
+  const name=document.getElementById('nc-name').value.trim();
+  if(!horse||!name){_inForm=true; unlockBtn(btn); toast('⚠️ Pferdename und Besitzer sind Pflichtfelder');return;}
+  const c=DB.newClient({
+    horse_name:horse, name,
+    phone:document.getElementById('nc-phone').value.trim(),
+    email:document.getElementById('nc-email').value.trim(),
+    address:document.getElementById('nc-addr').value.trim(),
+    notes:document.getElementById('nc-notes').value.trim(),
+  });
+  confirmSaved('✅ Kunde gespeichert!', btn);
+  setTimeout(()=>{showClientDetail(c.id);},1800);
+}
+
+function showEditClient(cid){
+  _inForm=true;
+  const c=DB.client(cid);
+  if(!c)return;
+  const prevView=currentView;
+  setTopbar('‹ <span style="cursor:pointer;" onclick="showClientDetail('+cid+')">Zurück</span> &nbsp; ✏️ Bearbeiten','');
+  const activeEl=document.getElementById('v-'+prevView);
+  activeEl.innerHTML=`
+  <div class="fg"><label>🐴 Pferdename *</label><input type="text" id="ec-horse" value="${esc(c.horse_name)}"></div>
+  <div class="fg"><label>👤 Besitzer *</label><input type="text" id="ec-name" value="${esc(c.name)}"></div>
+  <div class="fg"><label>📞 Telefon</label><input type="tel" id="ec-phone" value="${esc(c.phone||'')}"></div>
+  <div class="fg"><label>✉️ E-Mail</label><input type="email" id="ec-email" value="${esc(c.email||'')}"></div>
+  <div class="fg"><label>📍 Adresse</label><input type="text" id="ec-addr" value="${esc(c.address||'')}"></div>
+  <div class="fg"><label>💬 Notizen</label><textarea id="ec-notes" rows="3">${esc(c.notes||'')}</textarea></div>
+  <button class="btn bp bf" onclick="saveEditClient(${cid})" style="margin-bottom:9px;">💾 Speichern</button>
+  <button class="btn bo bf" onclick="showClientDetail(${cid})">Abbrechen</button>`;
+}
+function saveEditClient(cid){
+  const btn=document.querySelector(`button[onclick="saveEditClient(${cid})"]`);
+  if(btn?.disabled) return;
+  lockBtn(btn);
+  const c=DB.client(cid);
+  if(!c){unlockBtn(btn);return;}
+  c.horse_name=document.getElementById('ec-horse').value.trim();
+  c.name=document.getElementById('ec-name').value.trim();
+  c.phone=document.getElementById('ec-phone').value.trim();
+  c.email=document.getElementById('ec-email').value.trim();
+  c.address=document.getElementById('ec-addr').value.trim();
+  c.notes=document.getElementById('ec-notes').value.trim();
+  if(!c.horse_name||!c.name){unlockBtn(btn); toast('⚠️ Pflichtfelder fehlen');return;}
+  _inForm=false;
+  DB.saveClient(c);
+  confirmSaved('✅ Kundendaten gespeichert!', btn);
+  setTimeout(()=>showClientDetail(cid),1800);
+}
+
+// ══════════════════════════════════════════════
+// VIEW: EINSTELLUNGEN
+// ══════════════════════════════════════════════
+function renderSettings(){
+  setTopbar('⚙️ Einstellungen','');
+  const s=DB.settings();
+  document.getElementById('v-settings').innerHTML=`
+  <div class="card">
+    <div class="ct">🏢 Trainer-Informationen</div>
+    <div class="fg"><label>Firmenname / Bezeichnung</label><input type="text" id="s-company" value="${esc(s.company_name||'')}" placeholder="z. B. Pferdetraining Susanne"></div>
+    <div class="fg"><label>Dein Name (Trainer)</label><input type="text" id="s-trainer" value="${esc(s.trainer_name||'')}" placeholder="Dein Name"></div>
+    <div class="fg"><label>Telefon</label><input type="tel" id="s-phone" value="${esc(s.phone||'')}" placeholder="0151 …"></div>
+    <div class="fg"><label>E-Mail</label><input type="email" id="s-email" value="${esc(s.email||'')}" placeholder="info@…"></div>
+    <div class="fg"><label>Website</label><input type="text" id="s-web" value="${esc(s.website||'')}" placeholder="www.…"></div>
+  </div>
+  <div class="card">
+    <div class="ct">🎨 Corporate Design (PDF)</div>
+    <div class="row2" style="margin-bottom:14px;">
+      <div><label>Primärfarbe</label><input type="color" id="s-col1" value="${s.primary_color||'#1D3C6E'}" style="height:44px;padding:4px;"></div>
+      <div><label>Sekundärfarbe</label><input type="color" id="s-col2" value="${s.secondary_color||'#5B8ED4'}" style="height:44px;padding:4px;"></div>
+    </div>
+    <div class="row2" style="margin-bottom:14px;">
+      <div><label>Tabellen-Füllfarbe</label><input type="color" id="s-col3" value="${s.table_fill_color||'#EBF2FB'}" style="height:44px;padding:4px;"></div>
+      <div style="display:flex;align-items:flex-end;padding-bottom:4px;">
+        <button class="btn bo bsm" onclick="document.getElementById('s-col3').value='#FFFFFF';" style="font-size:.8em;">Weiß (kein Füllton)</button>
+      </div>
+    </div>
+    <div style="font-size:.83em;color:var(--mid);margin-bottom:16px;">Farben erscheinen auf allen PDF-Protokollen.</div>
+    <div class="fg">
+      <label>Firmen-Logo (erscheint oben rechts im Protokoll)</label>
+      <div style="display:flex;align-items:center;gap:14px;flex-wrap:wrap;margin-bottom:8px;">
+        ${localStorage.getItem('td_logo')?`<img src="${localStorage.getItem('td_logo')}" style="height:52px;max-width:140px;object-fit:contain;border-radius:7px;border:1px solid var(--bor);background:#fff;padding:4px;">`:'<div style="width:80px;height:52px;border:2px dashed var(--bor);border-radius:7px;display:flex;align-items:center;justify-content:center;color:var(--mid);font-size:.8em;">Kein Logo</div>'}
+        <div style="display:flex;flex-direction:column;gap:6px;">
+          <input type="file" id="logo-input" accept="image/*" style="display:none;" onchange="uploadLogo(this)">
+          <button class="btn bo bsm" onclick="document.getElementById('logo-input').click()">📷 Logo hochladen</button>
+          ${localStorage.getItem('td_logo')?'<button class="btn bd bsm" onclick="removeLogo()">🗑 Logo entfernen</button>':''}
+        </div>
+      </div>
+      <div style="font-size:.78em;color:var(--mid);">PNG oder JPG empfohlen. Wird automatisch komprimiert.</div>
+    </div>
+  </div>
+  <button class="btn bp bf" onclick="saveSettings()" style="margin-bottom:12px;">💾 Einstellungen speichern</button>
+
+  <div class="card" style="border:2px solid ${Supa.isConfigured()?'var(--grn)':'var(--s)'};">
+    <div class="ct">☁️ Supabase Cloud-Datenbank</div>
+    <div style="font-weight:600;font-size:.93em;margin-bottom:10px;color:${Supa.isConfigured()?'var(--grn)':'var(--mid)'};">
+      ${Supa.isConfigured()?'✅ Verbunden – alle Geräte synchronisiert':'⬜ Noch nicht verbunden'}
+    </div>
+    <p style="font-size:.83em;color:var(--mid);margin-bottom:13px;">
+      Trage deine Supabase-Zugangsdaten ein. Danach werden alle Daten automatisch in der Cloud gespeichert und sind auf <strong>iPhone, iPad und PC</strong> sofort verfügbar.
+    </p>
+    <div class="fg"><label>Supabase Project URL</label>
+      <input type="text" id="s-supa-url" value="${esc(localStorage.getItem('td_supa_url')||'')}"
+        placeholder="https://xxxx.supabase.co"></div>
+    <div class="fg"><label>Supabase Anon Key</label>
+      <input type="text" id="s-supa-key" value="${esc(localStorage.getItem('td_supa_key')||'')}"
+        placeholder="eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..."></div>
+    <button class="btn bp bf" onclick="saveSupaConfig()" style="margin-bottom:8px;">💾 Verbindung speichern & testen</button>
+    <button class="btn bo bf" onclick="syncNow()" style="margin-bottom:8px;">🔄 Jetzt synchronisieren (Cloud → Gerät)</button>
+    <button class="btn bo bf" onclick="pushAllToCloud()" style="color:var(--ora);border-color:var(--ora);">⬆️ Lokale Daten in Cloud hochladen</button>
+    <div style="font-size:.78em;color:var(--mid);margin-top:6px;">Nur nötig, wenn du Daten eingegeben hast, bevor Cloud-Sync eingerichtet war.</div>
+    <div style="margin-top:12px;background:var(--bg);border-radius:9px;padding:11px;font-size:.8em;line-height:1.6;">
+      <strong>🛠 Einrichtung (einmalig, ~5 Min.):</strong><br>
+      1. <a href="https://supabase.com" target="_blank" style="color:var(--p);">supabase.com</a> → „Start for free" → Konto erstellen<br>
+      2. „New project" → Name: TrainingsDoku, Region: West EU<br>
+      3. Project URL &amp; anon key aus „Project Settings → API" kopieren<br>
+      4. SQL-Editor öffnen und <button class="btn bo bsm" onclick="showSQL()" style="font-size:.78em;padding:3px 8px;">SQL anzeigen</button> ausführen
+    </div>
+  </div>
+
+  <div id="sql-box" style="display:none;" class="card">
+    <div class="ct">📋 SQL für Supabase (einmalig ausführen)</div>
+    <p style="font-size:.8em;color:var(--mid);margin-bottom:10px;">Kopiere diesen Code in den SQL-Editor deines Supabase-Projekts und klicke „Run":</p>
+    <textarea readonly style="font-family:monospace;font-size:.75em;height:200px;background:#1a1a2e;color:#00ff88;border-radius:8px;padding:12px;border:none;"
+    >CREATE TABLE IF NOT EXISTS clients (
+  id bigint PRIMARY KEY,
+  name text, horse_name text, phone text,
+  email text, address text, notes text, created text
+);
+CREATE TABLE IF NOT EXISTS sessions (
+  id bigint PRIMARY KEY,
+  client_id bigint, horse_name text, date text,
+  location text, observations text, exercises_done text,
+  homework text, rating int DEFAULT 0, notes text,
+  photos text, approved boolean DEFAULT false,
+  sent boolean DEFAULT false, created text
+);
+CREATE TABLE IF NOT EXISTS app_settings (
+  key text PRIMARY KEY, value text
+);
+-- Zugriff für alle erlauben (anon key)
+ALTER TABLE clients ENABLE ROW LEVEL SECURITY;
+ALTER TABLE sessions ENABLE ROW LEVEL SECURITY;
+ALTER TABLE app_settings ENABLE ROW LEVEL SECURITY;
+CREATE POLICY "allow all" ON clients FOR ALL USING (true) WITH CHECK (true);
+CREATE POLICY "allow all" ON sessions FOR ALL USING (true) WITH CHECK (true);
+CREATE POLICY "allow all" ON app_settings FOR ALL USING (true) WITH CHECK (true);</textarea>
+    <button class="btn bo bf bsm" onclick="copySQL()" style="margin-top:8px;">📋 SQL kopieren</button>
+  </div>
+
+  <div class="card">
+    <div class="ct">📤 Backup (optional)</div>
+    <p style="font-size:.83em;color:var(--mid);margin-bottom:11px;">Lokale Sicherungskopie als JSON-Datei.</p>
+    <button class="btn bo bf" onclick="exportData()" style="margin-bottom:8px;">💾 Alle Daten exportieren</button>
+    <input type="file" id="import-file" accept=".json" style="display:none;" onchange="importData(this)">
+    <button class="btn bo bf" onclick="document.getElementById('import-file').click()">📂 Daten importieren</button>
+  </div>
+
+  <div class="card">
+    <div class="ct">🧪 Demo-Daten</div>
+    <p style="font-size:.85em;color:var(--mid);margin-bottom:12px;">Beispiel-Kunden und ein Protokoll zum Ausprobieren der App.</p>
+    <button class="btn bo bf" onclick="loadDemo()">Demo-Daten laden</button>
+  </div>
+
+  <div style="text-align:center;font-size:.75em;color:var(--mid);margin-top:20px;padding-bottom:8px;">
+    TrainingsDoku Pro · MVP v1.0<br>
+    Alle Daten bleiben lokal auf diesem Gerät<br>
+    Kein Server · Keine Cloud · Keine Kosten
+  </div>`;
+}
+
+function saveSettings(){
+  DB.saveSettings({
+    company_name:document.getElementById('s-company').value,
+    trainer_name:document.getElementById('s-trainer').value,
+    phone:document.getElementById('s-phone').value,
+    email:document.getElementById('s-email').value,
+    website:document.getElementById('s-web').value,
+    primary_color:document.getElementById('s-col1').value,
+    secondary_color:document.getElementById('s-col2').value,
+    table_fill_color:document.getElementById('s-col3').value,
+  });
+  toast('✅ Einstellungen gespeichert!',3200,'tok');
+}
+
+function uploadLogo(input){
+  const f=input.files[0];
+  if(!f)return;
+  const r=new FileReader();
+  r.onload=e=>{
+    const img=new Image();
+    img.onload=()=>{
+      // Max 300×120 px, PNG
+      const MAX_W=800,MAX_H=320;
+      let w=img.width,h=img.height;
+      if(w>MAX_W||h>MAX_H){
+        const ratio=Math.min(MAX_W/w,MAX_H/h);
+        w=Math.round(w*ratio); h=Math.round(h*ratio);
+      }
+      const c=document.createElement('canvas');
+      c.width=w; c.height=h;
+      c.getContext('2d').drawImage(img,0,0,w,h);
+      try{
+        localStorage.setItem('td_logo',c.toDataURL('image/png'));
+        toast('✅ Logo gespeichert!',2500,'tok');
+      }catch(err){
+        toast('❌ Logo zu groß – bitte kleinere Datei wählen',4000,'terr');
+      }
+      renderSettings();
+    };
+    img.onerror=()=>toast('❌ Bild konnte nicht gelesen werden','terr');
+    img.src=e.target.result;
+  };
+  r.readAsDataURL(f);
+}
+
+function removeLogo(){
+  localStorage.removeItem('td_logo');
+  toast('Logo entfernt',2000);
+  renderSettings();
+}
+
+function exportData(){
+  const data={clients:DB.clients(),sessions:DB.sessions(),settings:DB.settings(),exported:new Date().toISOString()};
+  const blob=new Blob([JSON.stringify(data,null,2)],{type:'application/json'});
+  const a=document.createElement('a');
+  a.href=URL.createObjectURL(blob);
+  a.download=`TrainingsDoku_Export_${today()}.json`;
+  a.click();
+  toast('✅ Export gestartet!');
+}
+
+function importData(input){
+  const f=input.files[0];
+  if(!f)return;
+  const r=new FileReader();
+  r.onload=e=>{
+    try{
+      const d=JSON.parse(e.target.result);
+      if(d.clients)localStorage.setItem('td_clients',JSON.stringify(d.clients));
+      if(d.sessions)localStorage.setItem('td_sessions',JSON.stringify(d.sessions));
+      if(d.settings)localStorage.setItem('td_settings',JSON.stringify(d.settings));
+      toast('✅ Daten importiert!');
+      setTimeout(()=>renderSettings(),500);
+    }catch{toast('❌ Datei konnte nicht gelesen werden');}
+  };
+  r.readAsText(f);
+}
+
+async function saveSupaConfig(){
+  const url=document.getElementById('s-supa-url').value.trim();
+  const key=document.getElementById('s-supa-key').value.trim();
+  if(!url||!key){toast('⚠️ Beide Felder ausfüllen');return;}
+  if(!url.includes('supabase.co')){toast('⚠️ URL muss xxx.supabase.co sein');return;}
+  localStorage.setItem('td_supa_url',url);
+  localStorage.setItem('td_supa_key',key);
+
+  // Schritt 1: Lokale Daten ZUERST in Cloud sichern – niemals Daten verlieren
+  const localCount=DB.clients().length+DB.sessions().length;
+  if(localCount>0){
+    loader(true,`Schritt 1/2: ${localCount} lokale Einträge werden gesichert…`);
+    const pushRes=await Supa.pushAll();
+    if(!pushRes.ok){
+      loader(false);
+      toast('❌ Verbindung fehlgeschlagen – lokale Daten sind sicher. URL und Key prüfen.',5000,'terr');
+      localStorage.removeItem('td_supa_url'); localStorage.removeItem('td_supa_key');
+      return;
+    }
+  }
+
+  // Schritt 2: Cloud-Daten laden und mit lokalen zusammenführen
+  loader(true,'Schritt 2/2: Cloud-Daten werden geladen…');
+  const ok=await Supa.pullAll();
+  loader(false);
+  if(ok){
+    toast('✅ Verbunden! Alle Daten gesichert & synchronisiert.',3500,'tok');
+    document.getElementById('sync-icon').textContent='☁️';
+    const banner=document.getElementById('supa-banner');
+    if(banner) banner.remove();
+    setTimeout(()=>{renderSettings();nav('home');},800);
+  } else {
+    toast('❌ Cloud-Verbindung fehlgeschlagen. URL und Key prüfen.',5000,'terr');
+    localStorage.removeItem('td_supa_url'); localStorage.removeItem('td_supa_key');
+  }
+}
+
+async function pushAllToCloud(){
+  if(!Supa.isConfigured()){toast('⚠️ Bitte zuerst Supabase verbinden');return;}
+  const clients=DB.clients().length, sessions=DB.sessions().length;
+  if(!clients&&!sessions){toast('ℹ️ Keine lokalen Daten vorhanden');return;}
+  loader(true,`Lade ${clients} Kunden & ${sessions} Protokolle hoch…`);
+  const res=await Supa.pushAll();
+  loader(false);
+  if(res.ok){
+    toast(`✅ ${res.clients} Kunden & ${res.sessions} Protokolle hochgeladen!`,4000,'tok');
+  } else {
+    toast('⚠️ Upload fehlgeschlagen – Verbindung prüfen');
+  }
+}
+
+async function syncNow(){
+  if(!Supa.isConfigured()){toast('Bitte zuerst Supabase verbinden');return;}
+  loader(true,'Lokale Daten werden gesichert…');
+  await Supa.pushAll();
+  loader(true,'Cloud-Daten werden geladen…');
+  const ok=await Supa.pullAll();
+  loader(false);
+  const banner=document.getElementById('supa-banner');
+  if(ok&&banner) banner.remove();
+  toast(ok?'✅ Synchronisierung abgeschlossen!':'⚠️ Sync fehlgeschlagen – Verbindung prüfen', ok?3200:5000, ok?'tok':'terr');
+  if(ok){ renderSettings(); nav('home'); }
+}
+
+function showSQL(){
+  const box=document.getElementById('sql-box');
+  if(box) box.style.display=box.style.display==='none'?'block':'none';
+}
+function copySQL(){
+  const ta=document.querySelector('#sql-box textarea');
+  if(ta){ navigator.clipboard.writeText(ta.value).then(()=>toast('✅ SQL kopiert!')); }
+}
+
+function loadDemo(){
+  if(!confirm2('Demo-Daten hinzufügen?'))return;
+  const c=DB.newClient({horse_name:'Sturm',name:'Anna Müller',phone:'01512 3456789',notes:'Deutsches Sportpferd, 8 Jahre'});
+  const c2=DB.newClient({horse_name:'Bella',name:'Klaus Weber',phone:'01609 8765432',notes:'Hannoveraner Stute, 6 Jahre'});
+  DB.newSession({client_id:c.id,horse_name:'Sturm',date:today(),observations:'Leichte Versteifung links hinten. Unsicherheit beim Anreiten.',exercises_done:'Longierarbeit 20 Min., Entspannungsübungen, leichtes Anreiten.',homework:'Täglich 10 Min. Dehnübungen Hinterbeine. Kreisbewegungen in beide Richtungen.',rating:4,notes:'',photos:[],approved:false,sent:false});
+  toast('✅ Demo geladen!');
+  setTimeout(()=>nav('home'),600);
+}
+
+// ══════════════════════════════════════════════
+// SPEECH RECOGNITION
+// ══════════════════════════════════════════════
+// iOS/iPadOS: continuous:true + interimResults:true scheitern weil rec.start()
+// nach onend ohne User-Gesture blockiert wird → Single-Shot-Modus auf iOS.
+// Desktop/Android Chrome: continuous:true bleibt aktiv.
+let _activeRec=null;
+const SR=window.SpeechRecognition||window.webkitSpeechRecognition;
+const _isIOS=/iPad|iPhone|iPod/.test(navigator.userAgent)&&!window.MSStream;
+
+function toggleSpeech(targetId,btnId,statusId){
+  if(!SR){
+    if(_isIOS){ toast('Tippe ins Textfeld → Mikrofon 🎤 auf der Tastatur nutzen!', 4000); }
+    else { toast('⚠️ Spracherkennung in Chrome oder Edge verfügbar (nicht Firefox)', 4000); }
+    const t=document.getElementById(targetId);
+    if(t) t.focus();
+    return;
+  }
+
+  // Zweiter Klick = Stopp
+  if(_activeRec){ _activeRec.abort(); _activeRec=null; return; }
+
+  const target=document.getElementById(targetId);
+  const btn=document.getElementById(btnId);
+  const st=document.getElementById(statusId);
+  if(!target||!btn)return;
+
+  let final=target.value;
+  if(final&&!final.endsWith(' '))final+=' ';
+
+  btn.classList.add('rec'); btn.textContent='🔴 Stopp';
+  if(st) st.textContent='🎙️ Aufnahme läuft…';
+
+  function startRec(){
+    const rec=new SR();
+    rec.lang='de-DE'; rec.maxAlternatives=1;
+    if(_isIOS){
+      // iOS: Single-Shot – kein Auto-Restart (kein User-Gesture möglich)
+      rec.continuous=false; rec.interimResults=false;
+    } else {
+      // Desktop/Android: continuous, mit Auto-Restart nach Pause
+      rec.continuous=true; rec.interimResults=true;
+    }
+
+    rec.onresult=e=>{
+      let interim='',added='';
+      for(let i=e.resultIndex;i<e.results.length;i++){
+        if(e.results[i].isFinal) added+=e.results[i][0].transcript+' ';
+        else interim+=e.results[i][0].transcript;
+      }
+      if(added) final+=added;
+      target.value=final+(interim?'['+interim+']':'');
+    };
+
+    rec.onend=()=>{
+      if(!_isIOS && _activeRec){
+        // Chrome/Android: 150ms warten, dann neu starten
+        // (sofortiges rec.start() in onend blockiert manche Browser)
+        setTimeout(()=>{
+          if(!_activeRec) return; // Stopp wurde inzwischen gedrückt
+          try{ startRec(); }
+          catch(err){
+            btn.classList.remove('rec'); btn.textContent='🎙️ Diktieren';
+            target.value=final.trim();
+            if(st) st.textContent='';
+            _activeRec=null;
+          }
+        }, 150);
+        return;
+      }
+      // iOS oder Stopp gedrückt
+      btn.classList.remove('rec'); btn.textContent='🎙️ Diktieren';
+      target.value=final.trim();
+      if(st) st.textContent=(_isIOS&&final.trim())?'✅ Erkannt – nochmal tippen für mehr':'';
+      _activeRec=null;
+    };
+
+    rec.onerror=e=>{
+      // no-speech auf Desktop: onend kommt gleich und startet neu → ignorieren
+      if(e.error==='no-speech'&&!_isIOS&&_activeRec) return;
+      btn.classList.remove('rec'); btn.textContent='🎙️ Diktieren';
+      if(st) st.textContent='';
+      target.value=final.trim(); _activeRec=null;
+      if(e.error==='not-allowed'){
+        toast('❌ Mikrofon verweigert → Einstellungen → '+(
+          _isIOS?'Safari → Websites → Mikrofon':'Chrome → Datenschutz → Mikrofon'
+        )+' → erlauben',6000,'terr');
+      } else if(e.error!=='aborted'){
+        toast('Sprachfehler: '+e.error+' – bitte nochmal versuchen');
+      }
+    };
+
+    _activeRec=rec; rec.start();
+  }
+  startRec();
+}
+
+// ══════════════════════════════════════════════
+// TEXT TO SPEECH
+// ══════════════════════════════════════════════
+function speakText(text){
+  if(!window.speechSynthesis){toast('TTS nicht verfügbar');return;}
+  window.speechSynthesis.cancel();
+  const u=new SpeechSynthesisUtterance(text);
+  u.lang='de-DE'; u.rate=0.92;
+  window.speechSynthesis.speak(u);
+  toast('🔊 Wird vorgelesen…',2000);
+}
+
+function speakSession(id){
+  const s=DB.session(id);
+  if(!s)return;
+  const btn=document.getElementById('tts-btn');
+  if(window.speechSynthesis.speaking){
+    window.speechSynthesis.cancel();
+    if(btn)btn.textContent='🔊 Vorlesen (Vorbereitung)';
+    return;
+  }
+  const text=`Trainingsprotokoll für ${s.horse_name} vom ${fmtDate(s.date)}. Auffälligkeiten: ${s.observations||'keine'}. Schwerpunkte der Einheit: ${s.exercises_done||'keine'}. Hausaufgaben: ${s.homework||'keine'}.${s.notes?' Fokus der nächsten Einheit: '+s.notes+'.':''}`;
+  const u=new SpeechSynthesisUtterance(text);
+  u.lang='de-DE'; u.rate=0.92;
+  if(btn)btn.textContent='⏹ Stopp';
+  u.onend=()=>{if(btn)btn.textContent='🔊 Vorlesen (Vorbereitung)';};
+  window.speechSynthesis.speak(u);
+}
+
+// ══════════════════════════════════════════════
+// TEILEN PER WHATSAPP / TEXT
+// ══════════════════════════════════════════════
+function shareProtokoll(id){
+  const s=DB.session(id);
+  if(!s)return;
+  const c=DB.client(s.client_id);
+  const company=DB.getSetting('company_name','Pferdetraining');
+  const trainer=DB.getSetting('trainer_name','');
+  const stars=s.rating?'★'.repeat(s.rating)+'☆'.repeat(5-s.rating):'';
+
+  let txt=`TRAININGSPROTOKOLL\n`;
+  txt+=`${company}${trainer?' – '+trainer:''}\n`;
+  txt+=`─────────────────────\n`;
+  txt+=`📅 Datum: ${fmtDate(s.date)}\n`;
+  txt+=`🐴 Pferd: ${s.horse_name}\n`;
+  txt+=`👤 Besitzer: ${c?c.name:'–'}\n`;
+  if(s.location) txt+=`📍 Ort: ${s.location}\n`;
+  if(stars) txt+=`⭐ Einschätzung: ${stars}\n`;
+  txt+=`─────────────────────\n`;
+  if(s.observations) txt+=`\n⚠️ AUFFÄLLIGKEITEN\n${s.observations}\n`;
+  if(s.exercises_done) txt+=`\n🎯 SCHWERPUNKTE\n${s.exercises_done}\n`;
+  if(s.homework) txt+=`\n📚 HAUSAUFGABEN\n${s.homework}\n`;
+  if(s.notes) txt+=`\n💬 ANMERKUNGEN\n${s.notes}\n`;
+  txt+=`\n─────────────────────\nErstellt am ${new Date().toLocaleDateString('de-DE')}`;
+
+  const filename=`Trainingsprotokoll_${s.horse_name.replace(/\s+/g,'_')}_${s.date}.txt`;
+  const blob=new Blob([txt],{type:'text/plain;charset=utf-8'});
+  const file=new File([blob],filename,{type:'text/plain'});
+
+  // Web Share API mit Datei (iOS 15+ / Android Chrome: nativ teilen inkl. WhatsApp)
+  if(navigator.canShare && navigator.canShare({files:[file]})){
+    navigator.share({files:[file], title:`Trainingsprotokoll ${s.horse_name}`})
+      .then(()=>{s.sent=true;DB.saveSession(s);toast('✅ Geteilt!');})
+      .catch(()=>{});
+  } else if(navigator.share){
+    // Fallback: Text teilen (ohne Datei)
+    navigator.share({title:`Trainingsprotokoll ${s.horse_name}`,text:txt})
+      .then(()=>{s.sent=true;DB.saveSession(s);toast('✅ Geteilt!');})
+      .catch(()=>{});
+  } else {
+    // Desktop-Fallback: Datei herunterladen
+    const url=URL.createObjectURL(blob);
+    const a=document.createElement('a');
+    a.href=url; a.download=filename;
+    document.body.appendChild(a); a.click(); document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+    toast('✅ Textdatei gespeichert – in WhatsApp als Anhang versenden',4000);
+  }
+}
+
+// ══════════════════════════════════════════════
+// PDF GENERIERUNG (Browser-Druck → Als PDF speichern)
+// ══════════════════════════════════════════════
+function generatePDF(id){
+  const s=DB.session(id);
+  if(!s){toast('Session nicht gefunden');return;}
+  const c=DB.client(s.client_id);
+  const cfg=DB.settings();
+  const col1=cfg.primary_color||'#1D3C6E';
+  const col2=cfg.secondary_color||'#5B8ED4';
+  const col3=cfg.table_fill_color||'#EBF2FB';
+  const company=cfg.company_name||'Pferdetraining';
+  const trainer=cfg.trainer_name||'';
+  const phone=cfg.phone||'';
+  const email=cfg.email||'';
+  const logo=localStorage.getItem('td_logo')||'';
+  const stars=s.rating?'★'.repeat(s.rating)+'☆'.repeat(5-s.rating):'';
+  const contact=[trainer,phone,email].filter(Boolean).join(' · ');
+
+  function sec(icon,title,text){
+    if(!text||!text.trim())return '';
+    return `<div class="sec">
+      <div class="sec-title">${icon} ${title}</div>
+      <div class="sec-text">${text.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/\n/g,'<br>')}</div>
+    </div>`;
+  }
+
+  const photosHtml=(s.photos&&s.photos.length)
+    ?`<div class="sec"><div class="sec-title">📸 Fotos</div>
+      <div style="display:flex;gap:10px;flex-wrap:wrap;margin-top:6px;">
+      ${s.photos.slice(0,3).map(p=>`<img src="${p}" style="width:130px;height:105px;object-fit:cover;border-radius:8px;">`).join('')}
+      </div></div>`:'' ;
+
+  const html=`<!DOCTYPE html><html lang="de"><head><meta charset="UTF-8">
+  <title>Protokoll – ${s.horse_name} – ${s.date}</title>
+  <style>
+    *{box-sizing:border-box;margin:0;padding:0;}
+    body{font-family:Arial,Helvetica,sans-serif;color:#2C2C2C;font-size:13px;}
+    .header{background:${col1};color:white;padding:14px 24px;display:flex;align-items:center;justify-content:space-between;gap:12px;}
+    .header-text h1{font-size:18px;font-weight:bold;}
+    .header-text p{font-size:10.5px;opacity:.85;margin-top:3px;}
+    .header-logo{height:56px;max-width:160px;object-fit:contain;flex-shrink:0;border-radius:4px;image-rendering:auto;}
+    .body{padding:20px 24px;}
+    .doc-title{font-size:15px;font-weight:bold;color:${col1};margin-bottom:10px;}
+    .meta{display:grid;grid-template-columns:repeat(3,1fr);gap:0;border:1.5px solid ${col2};border-radius:8px;overflow:hidden;margin-bottom:18px;}
+    .meta-cell{padding:9px 12px;background:${col3};}
+    .meta-cell:not(:last-child){border-right:1px solid ${col2};}
+    .meta-label{font-size:8px;text-transform:uppercase;font-weight:bold;color:${col1};margin-bottom:3px;}
+    .meta-val{font-size:11px;font-weight:600;}
+    .sec{margin-bottom:16px;}
+    .sec-title{font-size:10px;font-weight:bold;color:${col1};text-transform:uppercase;letter-spacing:.4px;border-bottom:1.5px solid ${col2};padding-bottom:4px;margin-bottom:7px;}
+    .sec-text{font-size:13px;line-height:1.7;color:#2C2C2C;}
+    .footer{border-top:1px solid ${col2};padding:8px 24px;font-size:8.5px;color:#888;text-align:center;}
+    .back-bar{background:#f5f5f5;padding:10px 20px;display:flex;align-items:center;justify-content:space-between;border-bottom:1px solid #ddd;}
+    .back-btn{background:${col1};color:#fff;border:none;padding:9px 18px;border-radius:8px;font-size:14px;cursor:pointer;font-weight:600;}
+    @media print{
+      body{-webkit-print-color-adjust:exact;print-color-adjust:exact;}
+      @page{margin:10mm;}
+      .back-bar{display:none;}
+    }
+  </style></head><body>
+  <div class="back-bar">
+    <span style="font-size:11px;color:#888;">TrainingsDoku Pro – Protokoll</span>
+    <button class="back-btn" onclick="window.close()">← Zurück zur App</button>
+  </div>
+  <div class="header">
+    <div class="header-text">
+      <h1>${company}</h1>
+      ${contact?`<p>${contact}</p>`:''}
+    </div>
+    ${logo?`<img src="${logo}" class="header-logo" alt="Logo">`:''}
+  </div>
+  <div class="body">
+    <div class="doc-title">Trainingsprotokoll</div>
+    <div class="meta">
+      <div class="meta-cell"><div class="meta-label">Datum</div><div class="meta-val">${fmtDate(s.date)}</div></div>
+      <div class="meta-cell"><div class="meta-label">Pferd</div><div class="meta-val">${s.horse_name||'–'}</div></div>
+      <div class="meta-cell"><div class="meta-label">Besitzer</div><div class="meta-val">${c?c.name:'–'}</div></div>
+    </div>
+    ${s.location?sec('📍','Ort',s.location):''}
+    ${sec('⚠️','Auffälligkeiten',s.observations||'')}
+    ${sec('🎯','Schwerpunkte der Einheit',s.exercises_done||'')}
+    ${sec('📚','Hausaufgaben bis zum nächsten Termin',s.homework||'')}
+    ${s.notes?sec('📌','Fokus der nächsten Einheit',s.notes):''}
+    ${stars?`<div class="sec"><div class="sec-title">Einschätzung</div><div style="font-size:14px;">${stars}</div></div>`:''}
+    ${photosHtml}
+  </div>
+  <div class="footer">${[company,...[trainer,phone,email,cfg.website].filter(Boolean)].join(' · ')}</div>
+  <script>window.onload=()=>{window.print();}<\/script>
+  </body></html>`;
+
+  toast('📄 PDF wird geöffnet – "Als PDF speichern" wählen',5000,'tinfo');
+  const w=window.open('','_blank','width=820,height=1000');
+  if(w){w.document.write(html);w.document.close();}
+  else{
+    // Fallback: Download-Link (vermeidet Navigation weg von der App)
+    const blob=new Blob([html],{type:'text/html'});
+    const url=URL.createObjectURL(blob);
+    const a=document.createElement('a');
+    a.href=url; a.download='Protokoll.html'; a.style.display='none';
+    document.body.appendChild(a); a.click();
+    setTimeout(()=>{document.body.removeChild(a);URL.revokeObjectURL(url);},2000);
+    toast('📄 Protokoll wurde heruntergeladen.',3000,'tok');
+  }
+}
+
+// ══════════════════════════════════════════════
+// START
+// ══════════════════════════════════════════════
+document.addEventListener('DOMContentLoaded',async ()=>{
+  nav('home');
+
+  // Sync-Icon initialisieren
+  document.getElementById('sync-icon').textContent = Supa.isConfigured()?'☁️':'⬜';
+
+  // Browser-Hinweis für Spracherkennung
+  const isIOS=/iPad|iPhone|iPod/.test(navigator.userAgent);
+  const hasSR=!!(window.SpeechRecognition||window.webkitSpeechRecognition);
+  if(!hasSR && !isIOS){
+    const banner=document.createElement('div');
+    banner.style.cssText='background:#FEF0E4;border-bottom:2px solid #E67E22;padding:10px 16px;font-size:.83em;color:#6B3A00;text-align:center;position:sticky;top:56px;z-index:99;';
+    banner.innerHTML='🎤 Diktierfunktion: bitte <strong>Chrome</strong> oder <strong>Edge</strong> nutzen (nicht Firefox).';
+    document.body.insertBefore(banner, document.getElementById('v-home'));
+  }
+
+  // Supabase: beim Start erst lokale Daten hochladen, dann Cloud-Stand laden
+  if(Supa.isConfigured()){
+    _syncIcon('⟳');
+    await Supa.pushAll();   // Lokale Daten IMMER zuerst sichern
+    const ok = await Supa.pullAll();
+    if(ok){ renderHome(); }
+  } else {
+    // Hinweis: Supabase noch nicht eingerichtet
+    setTimeout(()=>{
+      const banner=document.createElement('div');
+      banner.id='supa-banner';
+      banner.style.cssText='background:#EAF4FF;border-bottom:2px solid #3B82F6;padding:10px 16px;font-size:.83em;color:#1E3A5F;display:flex;align-items:center;gap:10px;flex-wrap:wrap;';
+      banner.innerHTML=`<span>☁️ <strong>Noch kein Cloud-Speicher.</strong> Daten nur auf diesem Gerät.</span>
+        <button onclick="nav('settings')" style="background:#3B82F6;color:white;border:none;border-radius:7px;padding:5px 12px;font-size:.88em;cursor:pointer;white-space:nowrap;margin-left:auto;">☁️ Jetzt einrichten</button>
+        <button onclick="this.parentElement.remove()" style="background:none;border:none;font-size:1.1em;cursor:pointer;color:#1E3A5F;">✕</button>`;
+      const homeView=document.getElementById('v-home');
+      homeView.parentNode.insertBefore(banner, homeView);
+    }, 1500);
+  }
+
+  // Erster Start
+  if(!DB.clients().length&&!DB.sessions().length&&!Supa.isConfigured()){
+    setTimeout(()=>{
+      if(currentView==='home') toast('👋 Willkommen! Richte in ⚙️ Einstellungen die Cloud ein.',4000);
+    },800);
+  }
+
+  // Auto-Sync: beim Tab-Wechsel zurück automatisch aktualisieren
+  document.addEventListener('visibilitychange', async ()=>{
+    if(!document.hidden && Supa.isConfigured() && !_inForm){
+      await Supa.pushAll();          // zuerst lokale Änderungen hochladen
+      const ok = await Supa.pullAll(); // dann aktuellen Stand laden
+      if(ok && !_inForm) render(currentView);
+    }
+  });
+
+  // Auto-Sync: alle 3 Minuten im Hintergrund aktualisieren
+  setInterval(async ()=>{
+    if(Supa.isConfigured() && !document.hidden && !_inForm){
+      await Supa.pushAll();
+      const ok = await Supa.pullAll();
+      if(ok && !_inForm) render(currentView);
+    }
+  }, 3 * 60 * 1000);
+});
+</script>
+</body>
+</html>

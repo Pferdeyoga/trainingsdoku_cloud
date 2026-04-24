@@ -1,0 +1,24 @@
+{
+  "name": "TrainingsDoku Pro",
+  "short_name": "TrainingsDoku",
+  "description": "Trainingsprotokoll für Pferde",
+  "start_url": "./index.html",
+  "display": "standalone",
+  "background_color": "#F0F2F5",
+  "theme_color": "#1D3C6E",
+  "orientation": "portrait",
+  "icons": [
+    {
+      "src": "icon192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "icon.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any maskable"
+    }
+  ]
+}
