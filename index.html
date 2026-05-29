@@ -28,7 +28,7 @@
   --sh:  0 2px 12px rgba(0,0,0,0.08);
 }
 *{box-sizing:border-box;margin:0;padding:0;}
-body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;background:var(--bg);color:var(--txt);min-height:100vh;padding-bottom:72px;}
+body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;background:var(--bg);color:var(--txt);min-height:100vh;padding-bottom:92px;}
 
 /* ── TOPBAR ── */
 .tb{background:var(--p);color:#fff;padding:13px 16px;display:flex;align-items:center;justify-content:space-between;position:sticky;top:0;z-index:100;box-shadow:0 2px 8px rgba(0,0,0,.18);}
@@ -123,6 +123,12 @@ select{background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/
 .pv{white-space:pre-line;font-size:1.05em;line-height:1.7;}
 .row2{display:grid;grid-template-columns:1fr 1fr;gap:10px;}
 .info-box{background:var(--sl);border-radius:10px;padding:12px;font-size:.85em;margin-top:6px;}
+
+/* ── Copyright bar ── */
+.cr-bar{position:fixed;bottom:57px;left:0;right:0;background:var(--p);
+  color:rgba(255,255,255,.65);font-size:.58em;text-align:center;
+  padding:3px 8px;z-index:98;pointer-events:none;letter-spacing:.3px;
+  white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
 </style>
 </head>
 <body>
@@ -130,7 +136,7 @@ select{background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/
 <!-- TOPBAR (dynamisch) -->
 <div class="tb" id="topbar">
   <h1 id="tb-title">🐴 TrainingsDoku Pro</h1>
-  <span id="sync-icon" title="Cloud-Status" style="font-size:.95em;cursor:pointer;" onclick="nav('settings')">⬜</span>
+  <!-- kein Sync-Icon in der Lokal-Version -->
   <div id="tb-right"></div>
 </div>
 
@@ -158,157 +164,7 @@ select{background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/
 'use strict';
 
 // ══════════════════════════════════════════════
-// SUPABASE CLOUD
-// ══════════════════════════════════════════════
-const Supa = {
-  get url(){ return localStorage.getItem('td_supa_url')||''; },
-  get key(){ return localStorage.getItem('td_supa_key')||''; },
-
-  isConfigured(){ return !!(this.url && this.key && this.url.includes('supabase.co')); },
-
-  async _req(table, method='GET', body=null, query=''){
-    if(!this.isConfigured()) return null;
-    try{
-      const heads = {
-        'apikey': this.key,
-        'Authorization': `Bearer ${this.key}`,
-        'Content-Type': 'application/json',
-      };
-      if(method==='POST') heads['Prefer']='return=representation,resolution=merge-duplicates';
-      const res = await fetch(`${this.url}/rest/v1/${table}${query}`,{
-        method, headers:heads,
-        body: body ? JSON.stringify(body) : undefined,
-      });
-      if(!res.ok){ console.warn('Supabase err:', await res.text()); return null; }
-      const txt = await res.text();
-      return txt ? JSON.parse(txt) : true;
-    }catch(e){ console.warn('Supabase fetch:', e); return null; }
-  },
-
-  // ── Clients ──
-  getClients(){ return this._req('clients','GET',null,'?select=*&order=name'); },
-  upsertClient(c){ return this._req('clients','POST',c); },
-  delClient(id){ return this._req('clients','DELETE',null,`?id=eq.${id}`); },
-
-  // ── Sessions ──
-  getSessions(){ return this._req('sessions','GET',null,'?select=*&order=date.desc'); },
-  upsertSession(s){
-    return this._req('sessions','POST',{...s, photos: JSON.stringify(s.photos||[])});
-  },
-  delSession(id){ return this._req('sessions','DELETE',null,`?id=eq.${id}`); },
-
-  // ── App-Settings ──
-  getAppSettings(){ return this._req('app_settings','GET',null,'?select=*'); },
-  upsertAppSettings(obj){
-    const rows=Object.entries(obj)
-      .filter(([k])=>!k.startsWith('td_supa'))
-      .map(([key,value])=>({key,value:String(value)}));
-    if(!rows.length) return Promise.resolve(true);
-    return this._req('app_settings','POST',rows);
-  },
-
-  // ── Pull: Cloud → localStorage ──
-  async pullAll(){
-    if(!this.isConfigured()) return false;
-    _syncIcon('⟳');
-    try{
-      const [cloudClients,cloudSessions,settings] = await Promise.all([
-        this.getClients(), this.getSessions(), this.getAppSettings()
-      ]);
-
-      // Merge-Strategie: Cloud ist Wahrheit für bekannte Einträge,
-      // aber lokale Einträge die noch nicht in der Cloud sind, bleiben erhalten
-      if(cloudClients){
-        const cloudIds=new Set(cloudClients.map(c=>String(c.id)));
-        const localOnly=DB.clients().filter(c=>!cloudIds.has(String(c.id)));
-        localStorage.setItem('td_clients', JSON.stringify([...cloudClients, ...localOnly]));
-      }
-      if(cloudSessions){
-        const parsed=cloudSessions.map(s=>({...s,
-          photos: typeof s.photos==='string'? JSON.parse(s.photos||'[]'):(s.photos||[])
-        }));
-        const cloudIds=new Set(parsed.map(s=>String(s.id)));
-        const localOnly=DB.sessions().filter(s=>!cloudIds.has(String(s.id)));
-        localStorage.setItem('td_sessions', JSON.stringify([...parsed, ...localOnly]));
-      }
-      if(settings){
-        const obj=DB.settings();
-        settings.forEach(r=>{ obj[r.key]=r.value; });
-        localStorage.setItem('td_settings', JSON.stringify(obj));
-      }
-      _syncIcon('✅'); return true;
-    }catch(e){ _syncIcon('⚠️'); return false; }
-  },
-
-  // ── Push mit automatischem Retry (1x nach 3 Sekunden) ──
-  push(type, data){
-    if(!this.isConfigured()) return;
-    const run=()=>{
-      let p;
-      if(type==='client')        p=this.upsertClient(data);
-      else if(type==='session')  p=this.upsertSession(data);
-      else if(type==='settings') p=this.upsertAppSettings(data);
-      else if(type==='delClient')p=this.delClient(data);
-      else if(type==='delSession')p=this.delSession(data);
-      return p;
-    };
-    const attempt=run();
-    if(attempt){
-      attempt.then(r=>{
-        if(r){ _syncIcon('✅'); }
-        else{
-          // Erster Versuch fehlgeschlagen → nach 3 Sekunden nochmal
-          setTimeout(()=>{
-            const retry=run();
-            if(retry) retry.then(r2=>_syncIcon(r2?'✅':'⚠️')).catch(()=>_syncIcon('⚠️'));
-          }, 3000);
-        }
-      }).catch(()=>{
-        setTimeout(()=>{
-          const retry=run();
-          if(retry) retry.then(r2=>_syncIcon(r2?'✅':'⚠️')).catch(()=>_syncIcon('⚠️'));
-        }, 3000);
-      });
-    }
-  },
-
-  // ── Push ALL local data to cloud (Bulk-Upsert: nur 3 API-Calls) ──
-  async pushAll(){
-    if(!this.isConfigured()) return {ok:false};
-    _syncIcon('⟳');
-    try{
-      const clients=DB.clients();
-      const sessions=DB.sessions();
-      const settings=DB.settings();
-      const jobs=[];
-      // Bulk-Upsert: Array in einem API-Call
-      if(clients.length) jobs.push(this._req('clients','POST',clients));
-      if(sessions.length) jobs.push(this._req('sessions','POST',
-        sessions.map(s=>({...s, photos:JSON.stringify(s.photos||[])}))
-      ));
-      const settingRows=Object.entries(settings)
-        .filter(([k])=>!k.startsWith('td_supa'))
-        .map(([key,value])=>({key,value:String(value)}));
-      if(settingRows.length) jobs.push(this._req('app_settings','POST',settingRows));
-      const results=await Promise.all(jobs);
-      const allOk=results.every(r=>r!==null);
-      _syncIcon(allOk?'✅':'⚠️');
-      return {ok:allOk, clients:clients.length, sessions:sessions.length};
-    }catch(e){_syncIcon('⚠️'); return {ok:false};}
-  }
-};
-
-function _syncIcon(s){
-  const el=document.getElementById('sync-icon');
-  if(!el) return;
-  const map={'✅':'☁️✅','⚠️':'☁️⚠️','⟳':'☁️⟳'};
-  el.textContent=map[s]||'☁️';
-  clearTimeout(el._t);
-  el._t=setTimeout(()=>el.textContent=Supa.isConfigured()?'☁️':'⬜',3500);
-}
-
-// ══════════════════════════════════════════════
-// DATENBANK (localStorage + Cloud-Sync)
+// DATENBANK (nur localStorage – Version A Lokal)
 // ══════════════════════════════════════════════
 const DB = {
   _get(k){try{return JSON.parse(localStorage.getItem(k)||'[]');}catch{return [];}},
@@ -320,7 +176,6 @@ const DB = {
   settings(){try{return JSON.parse(localStorage.getItem('td_settings')||'{}');}catch{return {};}},
   saveSettings(s){
     localStorage.setItem('td_settings',JSON.stringify(s));
-    Supa.push('settings',s);
   },
   getSetting(k,def=''){return this.settings()[k]??def;},
 
@@ -329,10 +184,9 @@ const DB = {
   client(id){return this.clients().find(c=>String(c.id)===String(id))||null;},
   saveClient(c){
     const list=this.clients();
-    const idx=list.findIndex(x=>String(x.id)===String(c.id));
+    const idx=list.findIndex(x=>x.id===c.id);
     if(idx>=0)list[idx]=c; else list.push(c);
     this._set('td_clients',list);
-    Supa.push('client',c);
   },
   newClient(data){
     const c={id:Date.now(),...data,created:new Date().toISOString()};
@@ -341,7 +195,6 @@ const DB = {
   deleteClient(id){
     this._set('td_clients',this.clients().filter(c=>String(c.id)!==String(id)));
     this._set('td_sessions',this.sessions().filter(s=>String(s.client_id)!==String(id)));
-    Supa.push('delClient',id);
   },
 
   // Sessions
@@ -349,10 +202,9 @@ const DB = {
   session(id){return this.sessions().find(s=>String(s.id)===String(id))||null;},
   saveSession(s){
     const list=this.sessions();
-    const idx=list.findIndex(x=>String(x.id)===String(s.id));
+    const idx=list.findIndex(x=>x.id===s.id);
     if(idx>=0)list[idx]=s; else list.push(s);
     this._set('td_sessions',list);
-    Supa.push('session',s);
   },
   newSession(data){
     const s={id:Date.now(),...data,approved:false,sent:false,created:new Date().toISOString()};
@@ -360,10 +212,9 @@ const DB = {
   },
   deleteSession(id){
     this._set('td_sessions',this.sessions().filter(s=>String(s.id)!==String(id)));
-    Supa.push('delSession',id);
   },
   sessionsByDate(date){return this.sessions().filter(s=>s.date===date);},
-  sessionsByClient(cid){return this.sessions().filter(s=>String(s.client_id)===String(cid)).sort((a,b)=>b.date.localeCompare(a.date));},
+  sessionsByClient(cid){return this.sessions().filter(s=>s.client_id===cid).sort((a,b)=>b.date.localeCompare(a.date));},
   lastSession(cid){return this.sessionsByClient(cid)[0]||null;},
   todaySessions(){return this.sessionsByDate(today());},
 
@@ -1165,62 +1016,6 @@ function renderSettings(){
   </div>
   <button class="btn bp bf" onclick="saveSettings()" style="margin-bottom:12px;">💾 Einstellungen speichern</button>
 
-  <div class="card" style="border:2px solid ${Supa.isConfigured()?'var(--grn)':'var(--s)'};">
-    <div class="ct">☁️ Supabase Cloud-Datenbank</div>
-    <div style="font-weight:600;font-size:.93em;margin-bottom:10px;color:${Supa.isConfigured()?'var(--grn)':'var(--mid)'};">
-      ${Supa.isConfigured()?'✅ Verbunden – alle Geräte synchronisiert':'⬜ Noch nicht verbunden'}
-    </div>
-    <p style="font-size:.83em;color:var(--mid);margin-bottom:13px;">
-      Trage deine Supabase-Zugangsdaten ein. Danach werden alle Daten automatisch in der Cloud gespeichert und sind auf <strong>iPhone, iPad und PC</strong> sofort verfügbar.
-    </p>
-    <div class="fg"><label>Supabase Project URL</label>
-      <input type="text" id="s-supa-url" value="${esc(localStorage.getItem('td_supa_url')||'')}"
-        placeholder="https://xxxx.supabase.co"></div>
-    <div class="fg"><label>Supabase Anon Key</label>
-      <input type="text" id="s-supa-key" value="${esc(localStorage.getItem('td_supa_key')||'')}"
-        placeholder="eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..."></div>
-    <button class="btn bp bf" onclick="saveSupaConfig()" style="margin-bottom:8px;">💾 Verbindung speichern & testen</button>
-    <button class="btn bo bf" onclick="syncNow()" style="margin-bottom:8px;">🔄 Jetzt synchronisieren (Cloud → Gerät)</button>
-    <button class="btn bo bf" onclick="pushAllToCloud()" style="color:var(--ora);border-color:var(--ora);">⬆️ Lokale Daten in Cloud hochladen</button>
-    <div style="font-size:.78em;color:var(--mid);margin-top:6px;">Nur nötig, wenn du Daten eingegeben hast, bevor Cloud-Sync eingerichtet war.</div>
-    <div style="margin-top:12px;background:var(--bg);border-radius:9px;padding:11px;font-size:.8em;line-height:1.6;">
-      <strong>🛠 Einrichtung (einmalig, ~5 Min.):</strong><br>
-      1. <a href="https://supabase.com" target="_blank" style="color:var(--p);">supabase.com</a> → „Start for free" → Konto erstellen<br>
-      2. „New project" → Name: TrainingsDoku, Region: West EU<br>
-      3. Project URL &amp; anon key aus „Project Settings → API" kopieren<br>
-      4. SQL-Editor öffnen und <button class="btn bo bsm" onclick="showSQL()" style="font-size:.78em;padding:3px 8px;">SQL anzeigen</button> ausführen
-    </div>
-  </div>
-
-  <div id="sql-box" style="display:none;" class="card">
-    <div class="ct">📋 SQL für Supabase (einmalig ausführen)</div>
-    <p style="font-size:.8em;color:var(--mid);margin-bottom:10px;">Kopiere diesen Code in den SQL-Editor deines Supabase-Projekts und klicke „Run":</p>
-    <textarea readonly style="font-family:monospace;font-size:.75em;height:200px;background:#1a1a2e;color:#00ff88;border-radius:8px;padding:12px;border:none;"
-    >CREATE TABLE IF NOT EXISTS clients (
-  id bigint PRIMARY KEY,
-  name text, horse_name text, phone text,
-  email text, address text, notes text, created text
-);
-CREATE TABLE IF NOT EXISTS sessions (
-  id bigint PRIMARY KEY,
-  client_id bigint, horse_name text, date text,
-  location text, observations text, exercises_done text,
-  homework text, rating int DEFAULT 0, notes text,
-  photos text, approved boolean DEFAULT false,
-  sent boolean DEFAULT false, created text
-);
-CREATE TABLE IF NOT EXISTS app_settings (
-  key text PRIMARY KEY, value text
-);
--- Zugriff für alle erlauben (anon key)
-ALTER TABLE clients ENABLE ROW LEVEL SECURITY;
-ALTER TABLE sessions ENABLE ROW LEVEL SECURITY;
-ALTER TABLE app_settings ENABLE ROW LEVEL SECURITY;
-CREATE POLICY "allow all" ON clients FOR ALL USING (true) WITH CHECK (true);
-CREATE POLICY "allow all" ON sessions FOR ALL USING (true) WITH CHECK (true);
-CREATE POLICY "allow all" ON app_settings FOR ALL USING (true) WITH CHECK (true);</textarea>
-    <button class="btn bo bf bsm" onclick="copySQL()" style="margin-top:8px;">📋 SQL kopieren</button>
-  </div>
 
   <div class="card">
     <div class="ct">📤 Backup (optional)</div>
@@ -1237,7 +1032,7 @@ CREATE POLICY "allow all" ON app_settings FOR ALL USING (true) WITH CHECK (true)
   </div>
 
   <div style="text-align:center;font-size:.75em;color:var(--mid);margin-top:20px;padding-bottom:8px;">
-    TrainingsDoku Pro · MVP v1.0<br>
+    TrainingsDoku Pro · MVP v1.0<br>© 2026 Susanne Griese · Körperarbeit für Pferde<br>susanne.griese@gmx.de<br>
     Alle Daten bleiben lokal auf diesem Gerät<br>
     Kein Server · Keine Cloud · Keine Kosten
   </div>`;
@@ -1321,78 +1116,7 @@ function importData(input){
   r.readAsText(f);
 }
 
-async function saveSupaConfig(){
-  const url=document.getElementById('s-supa-url').value.trim();
-  const key=document.getElementById('s-supa-key').value.trim();
-  if(!url||!key){toast('⚠️ Beide Felder ausfüllen');return;}
-  if(!url.includes('supabase.co')){toast('⚠️ URL muss xxx.supabase.co sein');return;}
-  localStorage.setItem('td_supa_url',url);
-  localStorage.setItem('td_supa_key',key);
-
-  // Schritt 1: Lokale Daten ZUERST in Cloud sichern – niemals Daten verlieren
-  const localCount=DB.clients().length+DB.sessions().length;
-  if(localCount>0){
-    loader(true,`Schritt 1/2: ${localCount} lokale Einträge werden gesichert…`);
-    const pushRes=await Supa.pushAll();
-    if(!pushRes.ok){
-      loader(false);
-      toast('❌ Verbindung fehlgeschlagen – lokale Daten sind sicher. URL und Key prüfen.',5000,'terr');
-      localStorage.removeItem('td_supa_url'); localStorage.removeItem('td_supa_key');
-      return;
-    }
-  }
-
-  // Schritt 2: Cloud-Daten laden und mit lokalen zusammenführen
-  loader(true,'Schritt 2/2: Cloud-Daten werden geladen…');
-  const ok=await Supa.pullAll();
-  loader(false);
-  if(ok){
-    toast('✅ Verbunden! Alle Daten gesichert & synchronisiert.',3500,'tok');
-    document.getElementById('sync-icon').textContent='☁️';
-    const banner=document.getElementById('supa-banner');
-    if(banner) banner.remove();
-    setTimeout(()=>{renderSettings();nav('home');},800);
-  } else {
-    toast('❌ Cloud-Verbindung fehlgeschlagen. URL und Key prüfen.',5000,'terr');
-    localStorage.removeItem('td_supa_url'); localStorage.removeItem('td_supa_key');
-  }
-}
-
-async function pushAllToCloud(){
-  if(!Supa.isConfigured()){toast('⚠️ Bitte zuerst Supabase verbinden');return;}
-  const clients=DB.clients().length, sessions=DB.sessions().length;
-  if(!clients&&!sessions){toast('ℹ️ Keine lokalen Daten vorhanden');return;}
-  loader(true,`Lade ${clients} Kunden & ${sessions} Protokolle hoch…`);
-  const res=await Supa.pushAll();
-  loader(false);
-  if(res.ok){
-    toast(`✅ ${res.clients} Kunden & ${res.sessions} Protokolle hochgeladen!`,4000,'tok');
-  } else {
-    toast('⚠️ Upload fehlgeschlagen – Verbindung prüfen');
-  }
-}
-
-async function syncNow(){
-  if(!Supa.isConfigured()){toast('Bitte zuerst Supabase verbinden');return;}
-  loader(true,'Lokale Daten werden gesichert…');
-  await Supa.pushAll();
-  loader(true,'Cloud-Daten werden geladen…');
-  const ok=await Supa.pullAll();
-  loader(false);
-  const banner=document.getElementById('supa-banner');
-  if(ok&&banner) banner.remove();
-  toast(ok?'✅ Synchronisierung abgeschlossen!':'⚠️ Sync fehlgeschlagen – Verbindung prüfen', ok?3200:5000, ok?'tok':'terr');
-  if(ok){ renderSettings(); nav('home'); }
-}
-
-function showSQL(){
-  const box=document.getElementById('sql-box');
-  if(box) box.style.display=box.style.display==='none'?'block':'none';
-}
-function copySQL(){
-  const ta=document.querySelector('#sql-box textarea');
-  if(ta){ navigator.clipboard.writeText(ta.value).then(()=>toast('✅ SQL kopiert!')); }
-}
+// (Cloud-Funktionen in Lokal-Version nicht vorhanden)
 
 function loadDemo(){
   if(!confirm2('Demo-Daten hinzufügen?'))return;
@@ -1460,9 +1184,8 @@ function toggleSpeech(targetId,btnId,statusId){
     rec.onend=()=>{
       if(!_isIOS && _activeRec){
         // Chrome/Android: 150ms warten, dann neu starten
-        // (sofortiges rec.start() in onend blockiert manche Browser)
         setTimeout(()=>{
-          if(!_activeRec) return; // Stopp wurde inzwischen gedrückt
+          if(!_activeRec) return;
           try{ startRec(); }
           catch(err){
             btn.classList.remove('rec'); btn.textContent='🎙️ Diktieren';
@@ -1692,9 +1415,6 @@ function generatePDF(id){
 document.addEventListener('DOMContentLoaded',async ()=>{
   nav('home');
 
-  // Sync-Icon initialisieren
-  document.getElementById('sync-icon').textContent = Supa.isConfigured()?'☁️':'⬜';
-
   // Browser-Hinweis für Spracherkennung
   const isIOS=/iPad|iPhone|iPod/.test(navigator.userAgent);
   const hasSR=!!(window.SpeechRecognition||window.webkitSpeechRecognition);
@@ -1705,51 +1425,14 @@ document.addEventListener('DOMContentLoaded',async ()=>{
     document.body.insertBefore(banner, document.getElementById('v-home'));
   }
 
-  // Supabase: beim Start erst lokale Daten hochladen, dann Cloud-Stand laden
-  if(Supa.isConfigured()){
-    _syncIcon('⟳');
-    await Supa.pushAll();   // Lokale Daten IMMER zuerst sichern
-    const ok = await Supa.pullAll();
-    if(ok){ renderHome(); }
-  } else {
-    // Hinweis: Supabase noch nicht eingerichtet
-    setTimeout(()=>{
-      const banner=document.createElement('div');
-      banner.id='supa-banner';
-      banner.style.cssText='background:#EAF4FF;border-bottom:2px solid #3B82F6;padding:10px 16px;font-size:.83em;color:#1E3A5F;display:flex;align-items:center;gap:10px;flex-wrap:wrap;';
-      banner.innerHTML=`<span>☁️ <strong>Noch kein Cloud-Speicher.</strong> Daten nur auf diesem Gerät.</span>
-        <button onclick="nav('settings')" style="background:#3B82F6;color:white;border:none;border-radius:7px;padding:5px 12px;font-size:.88em;cursor:pointer;white-space:nowrap;margin-left:auto;">☁️ Jetzt einrichten</button>
-        <button onclick="this.parentElement.remove()" style="background:none;border:none;font-size:1.1em;cursor:pointer;color:#1E3A5F;">✕</button>`;
-      const homeView=document.getElementById('v-home');
-      homeView.parentNode.insertBefore(banner, homeView);
-    }, 1500);
-  }
-
   // Erster Start
-  if(!DB.clients().length&&!DB.sessions().length&&!Supa.isConfigured()){
+  if(!DB.clients().length&&!DB.sessions().length){
     setTimeout(()=>{
-      if(currentView==='home') toast('👋 Willkommen! Richte in ⚙️ Einstellungen die Cloud ein.',4000);
+      if(currentView==='home') toast('👋 Willkommen! Richte in ⚙️ Einstellungen deinen Namen und deine Kontaktdaten ein.',4000);
     },800);
   }
-
-  // Auto-Sync: beim Tab-Wechsel zurück automatisch aktualisieren
-  document.addEventListener('visibilitychange', async ()=>{
-    if(!document.hidden && Supa.isConfigured() && !_inForm){
-      await Supa.pushAll();          // zuerst lokale Änderungen hochladen
-      const ok = await Supa.pullAll(); // dann aktuellen Stand laden
-      if(ok && !_inForm) render(currentView);
-    }
-  });
-
-  // Auto-Sync: alle 3 Minuten im Hintergrund aktualisieren
-  setInterval(async ()=>{
-    if(Supa.isConfigured() && !document.hidden && !_inForm){
-      await Supa.pushAll();
-      const ok = await Supa.pullAll();
-      if(ok && !_inForm) render(currentView);
-    }
-  }, 3 * 60 * 1000);
 });
 </script>
+<div class="cr-bar">© 2026 Susanne Griese · Körperarbeit für Pferde · susanne.griese@gmx.de · Entwickelt mit TrainingsDoku Pro</div>
 </body>
 </html>
