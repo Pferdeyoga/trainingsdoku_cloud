@@ -28,7 +28,7 @@
   --sh:  0 2px 12px rgba(0,0,0,0.08);
 }
 *{box-sizing:border-box;margin:0;padding:0;}
-body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;background:var(--bg);color:var(--txt);min-height:100vh;padding-bottom:72px;}
+body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;background:var(--bg);color:var(--txt);min-height:100vh;padding-bottom:92px;}
 
 /* ── TOPBAR ── */
 .tb{background:var(--p);color:#fff;padding:13px 16px;display:flex;align-items:center;justify-content:space-between;position:sticky;top:0;z-index:100;box-shadow:0 2px 8px rgba(0,0,0,.18);}
@@ -123,6 +123,12 @@ select{background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/
 .pv{white-space:pre-line;font-size:1.05em;line-height:1.7;}
 .row2{display:grid;grid-template-columns:1fr 1fr;gap:10px;}
 .info-box{background:var(--sl);border-radius:10px;padding:12px;font-size:.85em;margin-top:6px;}
+
+/* ── Copyright bar ── */
+.cr-bar{position:fixed;bottom:57px;left:0;right:0;background:var(--p);
+  color:rgba(255,255,255,.65);font-size:.58em;text-align:center;
+  padding:3px 8px;z-index:98;pointer-events:none;letter-spacing:.3px;
+  white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
 </style>
 </head>
 <body>
@@ -156,6 +162,76 @@ select{background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/
 
 <script>
 'use strict';
+
+// ══════════════════════════════════════════════
+// PERSISTENTER SPEICHER (IndexedDB statt localStorage)
+// localStorage ist in Safari/iOS auf ca. 5-10 MB begrenzt - das reicht
+// schnell nicht mehr, sobald Fotos in Protokollen gespeichert werden.
+// IndexedDB hat ein weit groesseres Limit (i.d.R. mehrere hundert MB
+// bis in den GB-Bereich) und loest das Problem dauerhaft.
+// ══════════════════════════════════════════════
+const Cache = { td_clients:[], td_sessions:[], td_settings:{}, td_logo:'' };
+let _storeReady = null;
+
+const IDB = {
+  _db:null,
+  open(){
+    if(this._db) return Promise.resolve(this._db);
+    return new Promise((resolve,reject)=>{
+      const req=indexedDB.open('td_store_v1',1);
+      req.onupgradeneeded=(e)=>{
+        const db=e.target.result;
+        if(!db.objectStoreNames.contains('kv')) db.createObjectStore('kv');
+      };
+      req.onsuccess=()=>{ this._db=req.result; resolve(this._db); };
+      req.onerror=()=>reject(req.error);
+    });
+  },
+  async get(key){
+    const db=await this.open();
+    return new Promise((resolve,reject)=>{
+      const tx=db.transaction('kv','readonly');
+      const rq=tx.objectStore('kv').get(key);
+      rq.onsuccess=()=>resolve(rq.result);
+      rq.onerror=()=>reject(rq.error);
+    });
+  },
+  async set(key,value){
+    const db=await this.open();
+    return new Promise((resolve,reject)=>{
+      const tx=db.transaction('kv','readwrite');
+      tx.objectStore('kv').put(value,key);
+      tx.oncomplete=()=>resolve(true);
+      tx.onerror=()=>reject(tx.error);
+    });
+  }
+};
+
+// Beim allerersten Start werden vorhandene localStorage-Daten einmalig
+// nach IndexedDB uebernommen (Migration), danach ist localStorage fuer
+// Kunden/Protokolle/Logo nicht mehr im Einsatz.
+async function initStore(){
+  if(_storeReady) return _storeReady;
+  _storeReady=(async ()=>{
+    const keys=['td_clients','td_sessions','td_settings','td_logo'];
+    for(const key of keys){
+      let val;
+      try{ val=await IDB.get(key); }catch(e){ console.warn('IndexedDB Lesefehler',key,e); val=undefined; }
+      if(val===undefined){
+        const raw=localStorage.getItem(key);
+        if(raw!=null){
+          if(key==='td_logo'){ val=raw; }
+          else{ try{ val=JSON.parse(raw); }catch{ val=(key==='td_settings')?{}:[]; } }
+          try{ await IDB.set(key,val); }catch(e){ console.warn('IndexedDB Migrationsfehler',key,e); }
+        } else {
+          val=(key==='td_settings')?{}:(key==='td_logo'?'':[]);
+        }
+      }
+      Cache[key]=val;
+    }
+  })();
+  return _storeReady;
+}
 
 // ══════════════════════════════════════════════
 // SUPABASE CLOUD
@@ -221,7 +297,7 @@ const Supa = {
       if(cloudClients){
         const cloudIds=new Set(cloudClients.map(c=>String(c.id)));
         const localOnly=DB.clients().filter(c=>!cloudIds.has(String(c.id)));
-        localStorage.setItem('td_clients', JSON.stringify([...cloudClients, ...localOnly]));
+        DB._set('td_clients', [...cloudClients, ...localOnly]);
       }
       if(cloudSessions){
         const parsed=cloudSessions.map(s=>({...s,
@@ -229,12 +305,12 @@ const Supa = {
         }));
         const cloudIds=new Set(parsed.map(s=>String(s.id)));
         const localOnly=DB.sessions().filter(s=>!cloudIds.has(String(s.id)));
-        localStorage.setItem('td_sessions', JSON.stringify([...parsed, ...localOnly]));
+        DB._set('td_sessions', [...parsed, ...localOnly]);
       }
       if(settings){
         const obj=DB.settings();
         settings.forEach(r=>{ obj[r.key]=r.value; });
-        localStorage.setItem('td_settings', JSON.stringify(obj));
+        DB._set('td_settings', obj);
       }
       _syncIcon('✅'); return true;
     }catch(e){ _syncIcon('⚠️'); return false; }
@@ -311,15 +387,19 @@ function _syncIcon(s){
 // DATENBANK (localStorage + Cloud-Sync)
 // ══════════════════════════════════════════════
 const DB = {
-  _get(k){try{return JSON.parse(localStorage.getItem(k)||'[]');}catch{return [];}},
+  _get(k){ return Cache[k] ?? (k==='td_settings'?{}:[]); },
   _set(k,v){
-    localStorage.setItem(k,JSON.stringify(v));
+    Cache[k]=v;
+    IDB.set(k,v).catch(e=>{
+      console.error('IndexedDB Speicherfehler:',k,e);
+      toast('⚠️ Hintergrund-Speicherung fehlgeschlagen: '+(e.message||'unbekannt'),5000,'terr');
+    });
   },
 
   // Settings
-  settings(){try{return JSON.parse(localStorage.getItem('td_settings')||'{}');}catch{return {};}},
+  settings(){ return this._get('td_settings'); },
   saveSettings(s){
-    localStorage.setItem('td_settings',JSON.stringify(s));
+    this._set('td_settings',s);
     Supa.push('settings',s);
   },
   getSetting(k,def=''){return this.settings()[k]??def;},
@@ -378,6 +458,12 @@ const DB = {
 // UTILS
 // ══════════════════════════════════════════════
 function today(){return new Date().toISOString().slice(0,10);}
+
+// Markierung fuer per Schnellnotiz erfasste, noch nicht einsortierte Protokolle.
+// Wird dem "observations"-Feld vorangestellt - keine Supabase-Spaltenaenderung noetig.
+const QN_MARK='⟪SCHNELLNOTIZ⟫';
+function isUnsorted(s){ return !!(s && s.observations && s.observations.startsWith(QN_MARK)); }
+function qnRawText(s){ return isUnsorted(s) ? s.observations.slice(QN_MARK.length) : (s.observations||''); }
 function fmtDate(d){
   if(!d)return '';
   try{const dt=new Date(d+'T12:00:00');return dt.toLocaleDateString('de-DE',{day:'2-digit',month:'long',year:'numeric'});}
@@ -485,10 +571,11 @@ function renderHome(){
   if(sessions.length){
     sessions.forEach(s=>{
       const c=DB.client(s.client_id);
+      const unsorted=isUnsorted(s);
       html+=`<div class="si" onclick="showSession(${s.id})">
         <div class="av">🐴</div>
         <div class="si-info">
-          <div class="si-name">${esc(s.horse_name)}</div>
+          <div class="si-name">${esc(s.horse_name)}${unsorted?' <span class="badge bp2" style="font-size:.72em;">🎙️ unsortiert</span>':''}</div>
           <div class="si-sub">${esc(c?c.name:'Unbekannt')}</div>
         </div>
         <span style="color:var(--mid);font-size:1.2em;">›</span>
@@ -501,10 +588,10 @@ function renderHome(){
       <button class="btn bp" onclick="nav('neu')">+ Neue Einheit</button></div>`;
   }
 
-  if(sessions.length){
-    html+=`<div style="margin-top:18px;">
-      <button class="btn bp bf" onclick="nav('neu')">🎙️ Neue Trainingseinheit</button></div>`;
-  }
+  html+=`<div style="margin-top:18px;display:flex;flex-direction:column;gap:8px;">
+    <button class="btn bp bf" onclick="nav('neu')">🎙️ Neue Trainingseinheit</button>
+    <button class="btn bo bf" onclick="renderSchnell()" style="color:var(--ora,#B0521E);border-color:var(--ora,#B0521E);">🚗 Schnellnotiz (unterwegs diktieren)</button>
+  </div>`;
 
   document.getElementById('v-home').innerHTML=html;
 }
@@ -528,6 +615,9 @@ function renderNeu(prefillClientId=null){
   neuPhotos=[];
 
   document.getElementById('v-neu').innerHTML=`
+  <div class="info-box" style="margin-bottom:14px;">
+    🚗 Unterwegs oder wenig Zeit? <button class="slink" onclick="renderSchnell()">→ Schnellnotiz diktieren</button> (später in Ruhe einsortieren)
+  </div>
   <div class="fg">
     <label>Kunde / Pferd</label>
     ${clients.length
@@ -683,6 +773,118 @@ async function saveNeu(){
 }
 
 // ══════════════════════════════════════════════
+// VIEW: SCHNELLNOTIZ (frei diktieren, spaeter einsortieren)
+// ══════════════════════════════════════════════
+function renderSchnell(){
+  nav('neu');
+  _inForm=true;
+  setTopbar('‹ <span style="cursor:pointer;" onclick="nav(\'home\')">Zurück</span> &nbsp; 🚗 Schnellnotiz','');
+  document.getElementById('tb-title').onclick=()=>nav('home');
+
+  const clients=DB.clients();
+  const optHtml=clients.length
+    ? clients.map(c=>`<option value="${c.id}">${esc(c.horse_name)} – ${esc(c.name)}</option>`).join('')
+    : '';
+
+  document.getElementById('v-neu').innerHTML=`
+  <div class="info-box" style="margin-bottom:14px;">
+    🎙️ Alles in einem Rutsch diktieren – Auffälligkeiten, Übungen, Hausaufgabe zusammen. Die Rubriken ordnest du später bequem zu.
+    <div style="margin-top:6px;"><button class="slink" onclick="renderNeu()">→ Stattdessen normal erfassen (mit Rubriken)</button></div>
+  </div>
+  <div class="fg">
+    <label>Kunde / Pferd</label>
+    ${clients.length
+      ? `<select id="qn-client"><option value="">— Bitte wählen —</option>${optHtml}</select>`
+      : `<div class="info-box" style="margin-bottom:8px;">⚠️ Noch keine Kunden angelegt.</div>`}
+    <div style="margin-top:7px;"><button class="btn bo bsm" onclick="showNewClient()">+ Neuen Kunden anlegen</button></div>
+  </div>
+  <div class="fg"><label>Datum</label><input type="date" id="qn-date" value="${today()}"></div>
+  <hr class="div">
+  <div class="fg">
+    <label>🎙️ Frei diktieren</label>
+    <div style="display:flex;gap:8px;margin-bottom:7px;align-items:center;">
+      <button class="spbtn" id="sp-qn" onclick="toggleSpeech('qn-text','sp-qn','st-qn')">🎙️ Diktieren</button>
+      <span class="spst" id="st-qn"></span>
+    </div>
+    <textarea id="qn-text" rows="9" placeholder="Auffälligkeiten, Übungen, Hausaufgaben – alles zusammen, wie es dir gerade einfällt…"></textarea>
+  </div>
+  <button class="btn bp bf" id="qn-save-btn" onclick="saveQuickNote(this)">💾 Schnellnotiz speichern</button>
+  <div style="height:10px;"></div>`;
+}
+
+function saveQuickNote(btn){
+  if(btn?.disabled) return;
+  const clientId=parseInt(document.getElementById('qn-client')?.value||0);
+  const text=(document.getElementById('qn-text')?.value||'').trim();
+  if(!clientId){ toast('⚠️ Bitte Kunde/Pferd wählen'); return; }
+  if(!text){ toast('⚠️ Bitte etwas diktieren oder eintippen'); return; }
+  const client=DB.client(clientId);
+  if(!client){ toast('⚠️ Kunde nicht gefunden'); return; }
+
+  lockBtn(btn);
+  const safetyTimer=setTimeout(()=>{ unlockBtn(btn); toast('⚠️ Zeitüberschreitung – bitte erneut versuchen',4000,'terr'); }, 10000);
+  try{
+    const s=DB.newSession({
+      client_id:clientId,
+      horse_name:client.horse_name,
+      date:document.getElementById('qn-date')?.value||today(),
+      location:'',
+      observations:QN_MARK+text,
+      exercises_done:'',
+      homework:'',
+      rating:0,
+      notes:'',
+      photos:[],
+    });
+    clearTimeout(safetyTimer);
+    _inForm=false;
+    confirmSaved('✅ Schnellnotiz gespeichert!', btn);
+    setTimeout(()=>nav('home'),1400);
+  }catch(e){
+    clearTimeout(safetyTimer);
+    unlockBtn(btn);
+    toast('❌ Speicherfehler: '+(e.message||'Unbekannt'),5000,'terr');
+    console.error('saveQuickNote:', e);
+  }
+}
+
+// ══════════════════════════════════════════════
+// SCHNELLNOTIZ EINSORTIEREN
+// ══════════════════════════════════════════════
+function showSortSession(id){
+  const s=DB.session(id);
+  if(!s)return;
+  const raw=qnRawText(s);
+  const activeViewId='v-'+currentView;
+
+  setTopbar('‹ <span style="cursor:pointer;" onclick="showSession('+id+')">Zurück</span> &nbsp; 🗂️ Einsortieren','');
+  document.getElementById('tb-title').onclick=()=>showSession(id);
+
+  document.getElementById(activeViewId).innerHTML=`
+  <div class="card">
+    <div class="ct">🎙️ Deine Schnellnotiz (Rohtext)</div>
+    <p class="pv" style="color:var(--mid);">${esc(raw)}</p>
+    <div style="font-size:.78em;color:var(--mid);margin-top:6px;">Passende Stellen unten in die richtigen Felder verschieben oder direkt bearbeiten.</div>
+  </div>
+  <div class="fg"><label>⚠️ Auffälligkeiten</label><textarea id="qs-obs" rows="5">${esc(raw)}</textarea></div>
+  <div class="fg"><label>🎯 Schwerpunkte der Einheit</label><textarea id="qs-ex" rows="4"></textarea></div>
+  <div class="fg"><label>📚 Hausaufgaben</label><textarea id="qs-hw" rows="4"></textarea></div>
+  <button class="btn bp bf" onclick="saveSortSession(${id})">✅ Einsortierung speichern</button>
+  <div style="height:10px;"></div>`;
+}
+
+function saveSortSession(id){
+  const s=DB.session(id);
+  if(!s)return;
+  s.observations=(document.getElementById('qs-obs')?.value||'').trim();
+  s.exercises_done=(document.getElementById('qs-ex')?.value||'').trim();
+  s.homework=(document.getElementById('qs-hw')?.value||'').trim();
+  DB.saveSession(s);
+  toast('✅ Einsortiert!',3000,'tok');
+  showSession(id);
+}
+
+// ══════════════════════════════════════════════
 // SESSION DETAIL (Modal-ähnlich)
 // ══════════════════════════════════════════════
 function showSession(id){
@@ -692,11 +894,15 @@ function showSession(id){
   const stars='⭐'.repeat(s.rating||0)+'☆'.repeat(5-(s.rating||0));
 
   setTopbar(`‹ <span style="cursor:pointer;" onclick="nav('${currentView}')">Zurück</span> &nbsp; 📋 Protokoll`,
-    `<button class="tb-btn" onclick="editSession(${id})">✏️</button>`);
+    isUnsorted(s)
+      ? `<button class="tb-btn" onclick="showSortSession(${id})">🗂️</button>`
+      : `<button class="tb-btn" onclick="editSession(${id})">✏️</button>`);
 
   // Session-View temporär übernehmen
   const activeViewId='v-'+currentView;
   const prevContent=document.getElementById(activeViewId).innerHTML;
+
+  const unsorted=isUnsorted(s);
 
   document.getElementById(activeViewId).innerHTML=`
   <div class="card">
@@ -717,10 +923,18 @@ function showSession(id){
     </div>
   </div>
 
+  ${unsorted?`
+  <div class="card" style="border:2px solid var(--ora,#B0521E);">
+    <div class="ct">🎙️ Schnellnotiz – noch unsortiert</div>
+    <p class="pv" style="color:var(--mid);">${esc(qnRawText(s))}</p>
+    <button class="btn bp bf" onclick="showSortSession(${id})" style="margin-top:8px;">🗂️ Jetzt einsortieren</button>
+  </div>
+  `:`
   ${s.observations?`<div class="card"><div class="ct">⚠️ Auffälligkeiten</div><p class="pv">${esc(s.observations)}</p></div>`:''}
   ${s.exercises_done?`<div class="card"><div class="ct">🎯 Schwerpunkte</div><p class="pv">${esc(s.exercises_done)}</p></div>`:''}
   ${s.homework?`<div class="card"><div class="ct">📚 Hausaufgaben</div><p class="pv">${esc(s.homework)}</p></div>`:''}
   ${s.notes?`<div class="card"><div class="ct">📌 Fokus der nächsten Einheit</div><p class="pv">${esc(s.notes)}</p></div>`:''}
+  `}
 
   ${(s.photos&&s.photos.length)?`<div class="card"><div class="ct">📸 Fotos</div>
     <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:6px;">
@@ -729,9 +943,13 @@ function showSession(id){
 
   <div class="card">
     <div class="ct">Aktionen</div>
+    ${unsorted?`
+    <div style="font-size:.85em;color:var(--mid);margin-bottom:8px;">Erst einsortieren, dann kannst du teilen, als PDF speichern oder vorlesen lassen.</div>
+    `:`
     <button class="btn bo bf" onclick="shareProtokoll(${id})" style="margin-bottom:8px;">📤 Per WhatsApp / Text teilen</button>
     <button class="btn bo bf" onclick="generatePDF(${id})" style="margin-bottom:8px;">📄 Als PDF speichern</button>
     ${(s.observations||s.homework||s.exercises_done||s.notes)?`<button class="btn bo bf" id="tts-btn" onclick="speakSession(${id})" style="margin-bottom:8px;">🔊 Vorlesen (Vorbereitung)</button>`:''}
+    `}
     <button class="btn bd bf" onclick="delSession(${id},'${activeViewId}')">🗑️ Protokoll löschen</button>
   </div>
   <button class="btn bo bf" onclick="showClientDetail(${s.client_id},'${activeViewId}')">👤 Zum Kundenprofil</button>
@@ -952,7 +1170,7 @@ function renderProtokolle(query=''){
         <div style="flex:1;display:flex;align-items:center;gap:12px;padding:13px 15px;cursor:pointer;" onclick="showSession(${s.id})">
           <div class="av">📅</div>
           <div class="si-info">
-            <div class="si-name">${esc(s.horse_name)}</div>
+            <div class="si-name">${esc(s.horse_name)}${isUnsorted(s)?' <span class="badge bp2" style="font-size:.7em;">🎙️ unsortiert</span>':''}</div>
             <div class="si-sub">${fmtDate(s.date)}${c?' · '+esc(c.name):''}${stars?' · '+stars:''}</div>
           </div>
           <span style="color:var(--mid);font-size:1.2em;">›</span>
@@ -1003,11 +1221,16 @@ function showClientDetail(cid){
 
   ${last?`<div class="card" style="border-left:4px solid var(--s);">
     <div class="ct">📋 Letzte Einheit – ${fmtDate(last.date)}</div>
+    ${isUnsorted(last)?`
+    <div style="font-size:.9em;color:var(--mid);">🎙️ Unsortierte Schnellnotiz vorhanden.</div>
+    <button class="btn bo bsm" style="margin-top:9px;" onclick="showSortSession(${last.id})">🗂️ Jetzt einsortieren</button>
+    `:`
     ${last.observations?`<div style="margin-bottom:9px;"><div style="font-size:.72em;color:var(--p);font-weight:700;margin-bottom:3px;">AUFFÄLLIGKEITEN</div>
     <div style="font-size:.9em;">${esc(last.observations.slice(0,200))}${last.observations.length>200?'…':''}</div></div>`:''}
     ${last.homework?`<div><div style="font-size:.72em;color:var(--p);font-weight:700;margin-bottom:3px;">HAUSAUFGABEN</div>
     <div style="font-size:.9em;">${esc(last.homework.slice(0,200))}${last.homework.length>200?'…':''}</div></div>`:''}
     <button class="btn bo bsm" style="margin-top:11px;" onclick="showSession(${last.id})">Vollständig ansehen</button>
+    `}
   </div>`:''}
 
   <div class="sh"><div class="stit">📂 Verlauf (${sessions.length} Einheiten)</div></div>
@@ -1016,10 +1239,11 @@ function showClientDetail(cid){
       <div style="width:36px;height:36px;border-radius:50%;background:var(--bg);border:2px solid var(--s);display:flex;align-items:center;justify-content:center;font-size:.85em;flex-shrink:0;">${i+1}</div>
       <div class="si-info">
         <div class="si-name" style="font-size:.93em;">${fmtDate(s.date)}</div>
-        ${s.homework?`<div class="si-sub">📚 ${esc(s.homework.slice(0,60))}${s.homework.length>60?'…':''}</div>`
+        ${isUnsorted(s)?`<div class="si-sub">🎙️ unsortierte Schnellnotiz</div>`
+          :s.homework?`<div class="si-sub">📚 ${esc(s.homework.slice(0,60))}${s.homework.length>60?'…':''}</div>`
           :s.observations?`<div class="si-sub">⚠️ ${esc(s.observations.slice(0,60))}${s.observations.length>60?'…':''}</div>`:''}
       </div>
-      <span class="badge ${s.sent?'bs2':s.approved?'ba':'bp2'}">${s.sent?'📲':s.approved?'✅':'⏳'}</span>
+      <span class="badge ${isUnsorted(s)?'bp2':(s.sent?'bs2':s.approved?'ba':'bp2')}">${isUnsorted(s)?'🎙️':(s.sent?'📲':s.approved?'✅':'⏳')}</span>
     </div>`).join('')
     :`<div class="empty" style="padding:20px;"><div>Noch keine Einheiten</div></div>`}
 
@@ -1159,11 +1383,11 @@ function renderSettings(){
     <div class="fg">
       <label>Firmen-Logo (erscheint oben rechts im Protokoll)</label>
       <div style="display:flex;align-items:center;gap:14px;flex-wrap:wrap;margin-bottom:8px;">
-        ${localStorage.getItem('td_logo')?`<img src="${localStorage.getItem('td_logo')}" style="height:52px;max-width:140px;object-fit:contain;border-radius:7px;border:1px solid var(--bor);background:#fff;padding:4px;">`:'<div style="width:80px;height:52px;border:2px dashed var(--bor);border-radius:7px;display:flex;align-items:center;justify-content:center;color:var(--mid);font-size:.8em;">Kein Logo</div>'}
+        ${Cache.td_logo?`<img src="${Cache.td_logo}" style="height:52px;max-width:140px;object-fit:contain;border-radius:7px;border:1px solid var(--bor);background:#fff;padding:4px;">`:'<div style="width:80px;height:52px;border:2px dashed var(--bor);border-radius:7px;display:flex;align-items:center;justify-content:center;color:var(--mid);font-size:.8em;">Kein Logo</div>'}
         <div style="display:flex;flex-direction:column;gap:6px;">
           <input type="file" id="logo-input" accept="image/*" style="display:none;" onchange="uploadLogo(this)">
           <button class="btn bo bsm" onclick="document.getElementById('logo-input').click()">📷 Logo hochladen</button>
-          ${localStorage.getItem('td_logo')?'<button class="btn bd bsm" onclick="removeLogo()">🗑 Logo entfernen</button>':''}
+          ${Cache.td_logo?'<button class="btn bd bsm" onclick="removeLogo()">🗑 Logo entfernen</button>':''}
         </div>
       </div>
       <div style="font-size:.78em;color:var(--mid);">PNG oder JPG empfohlen. Wird automatisch komprimiert.</div>
@@ -1281,10 +1505,10 @@ function uploadLogo(input){
       c.width=w; c.height=h;
       c.getContext('2d').drawImage(img,0,0,w,h);
       try{
-        localStorage.setItem('td_logo',c.toDataURL('image/png'));
+        DB._set('td_logo',c.toDataURL('image/png'));
         toast('✅ Logo gespeichert!',2500,'tok');
       }catch(err){
-        toast('❌ Logo zu groß – bitte kleinere Datei wählen',4000,'terr');
+        toast('❌ Logo konnte nicht verarbeitet werden',4000,'terr');
       }
       renderSettings();
     };
@@ -1295,7 +1519,7 @@ function uploadLogo(input){
 }
 
 function removeLogo(){
-  localStorage.removeItem('td_logo');
+  DB._set('td_logo','');
   toast('Logo entfernt',2000);
   renderSettings();
 }
@@ -1317,9 +1541,9 @@ function importData(input){
   r.onload=e=>{
     try{
       const d=JSON.parse(e.target.result);
-      if(d.clients)localStorage.setItem('td_clients',JSON.stringify(d.clients));
-      if(d.sessions)localStorage.setItem('td_sessions',JSON.stringify(d.sessions));
-      if(d.settings)localStorage.setItem('td_settings',JSON.stringify(d.settings));
+      if(d.clients) DB._set('td_clients',d.clients);
+      if(d.sessions) DB._set('td_sessions',d.sessions);
+      if(d.settings) DB._set('td_settings',d.settings);
       toast('✅ Daten importiert!');
       setTimeout(()=>renderSettings(),500);
     }catch{toast('❌ Datei konnte nicht gelesen werden');}
@@ -1601,7 +1825,7 @@ function generatePDF(id){
   const trainer=cfg.trainer_name||'';
   const phone=cfg.phone||'';
   const email=cfg.email||'';
-  const logo=localStorage.getItem('td_logo')||'';
+  const logo=Cache.td_logo||'';
   const stars=s.rating?'★'.repeat(s.rating)+'☆'.repeat(5-s.rating):'';
   const contact=[trainer,phone,email].filter(Boolean).join(' · ');
 
@@ -1696,6 +1920,7 @@ function generatePDF(id){
 // START
 // ══════════════════════════════════════════════
 document.addEventListener('DOMContentLoaded',async ()=>{
+  await initStore();
   nav('home');
 
   // Sync-Icon initialisieren
@@ -1757,5 +1982,6 @@ document.addEventListener('DOMContentLoaded',async ()=>{
   }, 3 * 60 * 1000);
 });
 </script>
+<div class="cr-bar">© 2026 Susanne Griese · Körpertraining für Pferde · pferdeyoga-sg@gmx.de · Entwickelt mit TrainingsDoku Pro</div>
 </body>
 </html>
