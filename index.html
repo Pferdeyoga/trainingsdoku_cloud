@@ -1466,10 +1466,13 @@ CREATE POLICY "allow all" ON app_settings FOR ALL USING (true) WITH CHECK (true)
     <button class="btn bo bf" onclick="loadDemo()">Demo-Daten laden</button>
   </div>
 
-  <div style="text-align:center;font-size:.75em;color:var(--mid);margin-top:20px;padding-bottom:8px;">
-    TrainingsDoku Pro · MVP v1.0<br>
-    Alle Daten bleiben lokal auf diesem Gerät<br>
-    Kein Server · Keine Cloud · Keine Kosten
+  <div class="card">
+    <div class="ct">ℹ️ Info</div>
+    <div style="font-size:.85em;color:var(--mid);line-height:1.8;">
+      TrainingsDoku Pro · Cloud-Version · Version 1.0<br>
+      © 2026 Susanne Griese · Entwickelt von Susanne Griese<br>
+      Kontakt: susanne.griese@gmx.de
+    </div>
   </div>`;
 }
 
@@ -1634,100 +1637,26 @@ function loadDemo(){
 }
 
 // ══════════════════════════════════════════════
-// SPEECH RECOGNITION
+// DIKTIEREN – Hinweis auf System-Diktierfunktion
 // ══════════════════════════════════════════════
-// iOS/iPadOS: continuous:true + interimResults:true scheitern weil rec.start()
-// nach onend ohne User-Gesture blockiert wird → Single-Shot-Modus auf iOS.
-// Desktop/Android Chrome: continuous:true bleibt aktiv.
-let _activeRec=null;
-const SR=window.SpeechRecognition||window.webkitSpeechRecognition;
+// Die frühere Browser-Spracherkennung (Web Speech API) war langsam und
+// fehleranfällig, weil sie bei jeder Sprechpause neu starten musste und
+// Audio an Google-Server schickte. Die Diktierfunktion des Betriebssystems
+// läuft lokal auf dem Gerät und ist auf allen Plattformen zuverlässiger.
 const _isIOS=/iPad|iPhone|iPod/.test(navigator.userAgent)&&!window.MSStream;
+const _isAndroid=/Android/.test(navigator.userAgent);
+const _isMac=/Macintosh/.test(navigator.userAgent)&&!_isIOS;
 
 function toggleSpeech(targetId,btnId,statusId){
-  if(!SR){
-    if(_isIOS){ toast('Tippe ins Textfeld → Mikrofon 🎤 auf der Tastatur nutzen!', 4000); }
-    else { toast('⚠️ Spracherkennung in Chrome oder Edge verfügbar (nicht Firefox)', 4000); }
-    const t=document.getElementById(targetId);
-    if(t) t.focus();
-    return;
+  const t=document.getElementById(targetId);
+  if(t) t.focus();
+  if(_isIOS||_isAndroid){
+    toast('🎙️ Mikrofon-Taste auf der Bildschirmtastatur antippen', 4000);
+  } else if(_isMac){
+    toast('🎙️ Fn-Taste zweimal drücken für die Mac-Diktierfunktion', 4000);
+  } else {
+    toast('🎙️ Win + H drücken für die Windows-Spracheingabe', 4000);
   }
-
-  // Zweiter Klick = Stopp
-  if(_activeRec){ _activeRec.abort(); _activeRec=null; return; }
-
-  const target=document.getElementById(targetId);
-  const btn=document.getElementById(btnId);
-  const st=document.getElementById(statusId);
-  if(!target||!btn)return;
-
-  let final=target.value;
-  if(final&&!final.endsWith(' '))final+=' ';
-
-  btn.classList.add('rec'); btn.textContent='🔴 Stopp';
-  if(st) st.textContent='🎙️ Aufnahme läuft…';
-
-  function startRec(){
-    const rec=new SR();
-    rec.lang='de-DE'; rec.maxAlternatives=1;
-    if(_isIOS){
-      // iOS: Single-Shot – kein Auto-Restart (kein User-Gesture möglich)
-      rec.continuous=false; rec.interimResults=false;
-    } else {
-      // Desktop/Android: continuous, mit Auto-Restart nach Pause
-      rec.continuous=true; rec.interimResults=true;
-    }
-
-    rec.onresult=e=>{
-      let interim='',added='';
-      for(let i=e.resultIndex;i<e.results.length;i++){
-        if(e.results[i].isFinal) added+=e.results[i][0].transcript+' ';
-        else interim+=e.results[i][0].transcript;
-      }
-      if(added) final+=added;
-      target.value=final+(interim?'['+interim+']':'');
-    };
-
-    rec.onend=()=>{
-      if(!_isIOS && _activeRec){
-        // Chrome/Android: 150ms warten, dann neu starten
-        // (sofortiges rec.start() in onend blockiert manche Browser)
-        setTimeout(()=>{
-          if(!_activeRec) return; // Stopp wurde inzwischen gedrückt
-          try{ startRec(); }
-          catch(err){
-            btn.classList.remove('rec'); btn.textContent='🎙️ Diktieren';
-            target.value=final.trim();
-            if(st) st.textContent='';
-            _activeRec=null;
-          }
-        }, 150);
-        return;
-      }
-      // iOS oder Stopp gedrückt
-      btn.classList.remove('rec'); btn.textContent='🎙️ Diktieren';
-      target.value=final.trim();
-      if(st) st.textContent=(_isIOS&&final.trim())?'✅ Erkannt – nochmal tippen für mehr':'';
-      _activeRec=null;
-    };
-
-    rec.onerror=e=>{
-      // no-speech auf Desktop: onend kommt gleich und startet neu → ignorieren
-      if(e.error==='no-speech'&&!_isIOS&&_activeRec) return;
-      btn.classList.remove('rec'); btn.textContent='🎙️ Diktieren';
-      if(st) st.textContent='';
-      target.value=final.trim(); _activeRec=null;
-      if(e.error==='not-allowed'){
-        toast('❌ Mikrofon verweigert → Einstellungen → '+(
-          _isIOS?'Safari → Websites → Mikrofon':'Chrome → Datenschutz → Mikrofon'
-        )+' → erlauben',6000,'terr');
-      } else if(e.error!=='aborted'){
-        toast('Sprachfehler: '+e.error+' – bitte nochmal versuchen');
-      }
-    };
-
-    _activeRec=rec; rec.start();
-  }
-  startRec();
 }
 
 // ══════════════════════════════════════════════
@@ -1926,16 +1855,6 @@ document.addEventListener('DOMContentLoaded',async ()=>{
   // Sync-Icon initialisieren
   document.getElementById('sync-icon').textContent = Supa.isConfigured()?'☁️':'⬜';
 
-  // Browser-Hinweis für Spracherkennung
-  const isIOS=/iPad|iPhone|iPod/.test(navigator.userAgent);
-  const hasSR=!!(window.SpeechRecognition||window.webkitSpeechRecognition);
-  if(!hasSR && !isIOS){
-    const banner=document.createElement('div');
-    banner.style.cssText='background:#FEF0E4;border-bottom:2px solid #E67E22;padding:10px 16px;font-size:.83em;color:#6B3A00;text-align:center;position:sticky;top:56px;z-index:99;';
-    banner.innerHTML='🎤 Diktierfunktion: bitte <strong>Chrome</strong> oder <strong>Edge</strong> nutzen (nicht Firefox).';
-    document.body.insertBefore(banner, document.getElementById('v-home'));
-  }
-
   // Supabase: beim Start erst lokale Daten hochladen, dann Cloud-Stand laden
   if(Supa.isConfigured()){
     _syncIcon('⟳');
@@ -1982,6 +1901,6 @@ document.addEventListener('DOMContentLoaded',async ()=>{
   }, 3 * 60 * 1000);
 });
 </script>
-<div class="cr-bar">© 2026 Susanne Griese · Körpertraining für Pferde · pferdeyoga-sg@gmx.de · Entwickelt mit TrainingsDoku Pro</div>
+<div class="cr-bar">© 2026 Susanne Griese · Lizenziert für: [Käuferin]</div>
 </body>
 </html>
