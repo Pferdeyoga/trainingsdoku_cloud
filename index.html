@@ -312,6 +312,7 @@ const Supa = {
         settings.forEach(r=>{ obj[r.key]=r.value; });
         DB._set('td_settings', obj);
       }
+      localStorage.setItem('td_last_sync_ok', String(Date.now()));
       _syncIcon('✅'); return true;
     }catch(e){ _syncIcon('⚠️'); return false; }
   },
@@ -368,6 +369,7 @@ const Supa = {
       if(settingRows.length) jobs.push(this._req('app_settings','POST',settingRows));
       const results=await Promise.all(jobs);
       const allOk=results.every(r=>r!==null);
+      if(allOk) localStorage.setItem('td_last_sync_ok', String(Date.now()));
       _syncIcon(allOk?'✅':'⚠️');
       return {ok:allOk, clients:clients.length, sessions:sessions.length};
     }catch(e){_syncIcon('⚠️'); return {ok:false};}
@@ -381,6 +383,33 @@ function _syncIcon(s){
   el.textContent=map[s]||'☁️';
   clearTimeout(el._t);
   el._t=setTimeout(()=>el.textContent=Supa.isConfigured()?'☁️':'⬜',3500);
+}
+
+// ══════════════════════════════════════════════
+// SYNC-WARNBANNER – dauerhaft sichtbar, falls seit
+// Tagen keine Cloud-Synchronisierung mehr geklappt hat
+// (z.B. weil das Supabase-Projekt pausiert wurde).
+// ══════════════════════════════════════════════
+function checkSyncHealth(){
+  const banner=document.getElementById('sync-warn-banner');
+  if(!Supa.isConfigured()){ if(banner) banner.remove(); return; }
+  const last=parseInt(localStorage.getItem('td_last_sync_ok')||'0',10);
+  const daysSince = last ? (Date.now()-last)/86400000 : Infinity;
+  if(daysSince>=2){
+    if(banner) return; // schon sichtbar
+    const days = last ? Math.floor(daysSince) : null;
+    const b=document.createElement('div');
+    b.id='sync-warn-banner';
+    b.style.cssText='background:#FDEDEC;border-bottom:2px solid #C0392B;padding:10px 16px;font-size:.85em;color:#7B241C;text-align:center;position:sticky;top:56px;z-index:99;';
+    b.innerHTML=`⚠️ <strong>Seit ${days!==null?days+' Tagen':'unbekannter Zeit'} keine erfolgreiche Cloud-Synchronisierung.</strong> Neue Einträge sind evtl. nur lokal auf diesem Gerät gespeichert. Prüfe deine Internetverbindung und ob dein Supabase-Projekt pausiert wurde (supabase.com einloggen und nachsehen).
+      <div style="margin-top:8px;">
+        <button onclick="exportData()" style="background:#C0392B;color:white;border:none;border-radius:7px;padding:6px 14px;font-size:.92em;cursor:pointer;">💾 Jetzt lokale Sicherung herunterladen</button>
+      </div>`;
+    const homeView=document.getElementById('v-home');
+    homeView.parentNode.insertBefore(b, homeView);
+  } else if(banner){
+    banner.remove();
+  }
 }
 
 // ══════════════════════════════════════════════
@@ -1860,6 +1889,7 @@ document.addEventListener('DOMContentLoaded',async ()=>{
     _syncIcon('⟳');
     await Supa.pushAll();   // Lokale Daten IMMER zuerst sichern
     const ok = await Supa.pullAll();
+    checkSyncHealth();
     if(ok){ renderHome(); }
   } else {
     // Hinweis: Supabase noch nicht eingerichtet
@@ -1887,6 +1917,7 @@ document.addEventListener('DOMContentLoaded',async ()=>{
     if(!document.hidden && Supa.isConfigured() && !_inForm){
       await Supa.pushAll();          // zuerst lokale Änderungen hochladen
       const ok = await Supa.pullAll(); // dann aktuellen Stand laden
+      checkSyncHealth();
       if(ok && !_inForm) render(currentView);
     }
   });
@@ -1896,6 +1927,7 @@ document.addEventListener('DOMContentLoaded',async ()=>{
     if(Supa.isConfigured() && !document.hidden && !_inForm){
       await Supa.pushAll();
       const ok = await Supa.pullAll();
+      checkSyncHealth();
       if(ok && !_inForm) render(currentView);
     }
   }, 3 * 60 * 1000);
