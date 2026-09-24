@@ -28,7 +28,7 @@
   --sh:  0 2px 12px rgba(0,0,0,0.08);
 }
 *{box-sizing:border-box;margin:0;padding:0;}
-body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;background:var(--bg);color:var(--txt);min-height:100vh;padding-bottom:72px;}
+body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;background:var(--bg);color:var(--txt);min-height:100vh;padding-bottom:92px;}
 
 /* ── TOPBAR ── */
 .tb{background:var(--p);color:#fff;padding:13px 16px;display:flex;align-items:center;justify-content:space-between;position:sticky;top:0;z-index:100;box-shadow:0 2px 8px rgba(0,0,0,.18);}
@@ -123,6 +123,12 @@ select{background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/
 .pv{white-space:pre-line;font-size:1.05em;line-height:1.7;}
 .row2{display:grid;grid-template-columns:1fr 1fr;gap:10px;}
 .info-box{background:var(--sl);border-radius:10px;padding:12px;font-size:.85em;margin-top:6px;}
+
+/* ── Copyright bar ── */
+.cr-bar{position:fixed;bottom:57px;left:0;right:0;background:var(--p);
+  color:rgba(255,255,255,.65);font-size:.58em;text-align:center;
+  padding:3px 8px;z-index:98;pointer-events:none;letter-spacing:.3px;
+  white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
 </style>
 </head>
 <body>
@@ -156,6 +162,76 @@ select{background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/
 
 <script>
 'use strict';
+
+// ══════════════════════════════════════════════
+// PERSISTENTER SPEICHER (IndexedDB statt localStorage)
+// localStorage ist in Safari/iOS auf ca. 5-10 MB begrenzt - das reicht
+// schnell nicht mehr, sobald Fotos in Protokollen gespeichert werden.
+// IndexedDB hat ein weit groesseres Limit (i.d.R. mehrere hundert MB
+// bis in den GB-Bereich) und loest das Problem dauerhaft.
+// ══════════════════════════════════════════════
+const Cache = { td_clients:[], td_sessions:[], td_settings:{}, td_logo:'' };
+let _storeReady = null;
+
+const IDB = {
+  _db:null,
+  open(){
+    if(this._db) return Promise.resolve(this._db);
+    return new Promise((resolve,reject)=>{
+      const req=indexedDB.open('td_store_v1',1);
+      req.onupgradeneeded=(e)=>{
+        const db=e.target.result;
+        if(!db.objectStoreNames.contains('kv')) db.createObjectStore('kv');
+      };
+      req.onsuccess=()=>{ this._db=req.result; resolve(this._db); };
+      req.onerror=()=>reject(req.error);
+    });
+  },
+  async get(key){
+    const db=await this.open();
+    return new Promise((resolve,reject)=>{
+      const tx=db.transaction('kv','readonly');
+      const rq=tx.objectStore('kv').get(key);
+      rq.onsuccess=()=>resolve(rq.result);
+      rq.onerror=()=>reject(rq.error);
+    });
+  },
+  async set(key,value){
+    const db=await this.open();
+    return new Promise((resolve,reject)=>{
+      const tx=db.transaction('kv','readwrite');
+      tx.objectStore('kv').put(value,key);
+      tx.oncomplete=()=>resolve(true);
+      tx.onerror=()=>reject(tx.error);
+    });
+  }
+};
+
+// Beim allerersten Start werden vorhandene localStorage-Daten einmalig
+// nach IndexedDB uebernommen (Migration), danach ist localStorage fuer
+// Kunden/Protokolle/Logo nicht mehr im Einsatz.
+async function initStore(){
+  if(_storeReady) return _storeReady;
+  _storeReady=(async ()=>{
+    const keys=['td_clients','td_sessions','td_settings','td_logo'];
+    for(const key of keys){
+      let val;
+      try{ val=await IDB.get(key); }catch(e){ console.warn('IndexedDB Lesefehler',key,e); val=undefined; }
+      if(val===undefined){
+        const raw=localStorage.getItem(key);
+        if(raw!=null){
+          if(key==='td_logo'){ val=raw; }
+          else{ try{ val=JSON.parse(raw); }catch{ val=(key==='td_settings')?{}:[]; } }
+          try{ await IDB.set(key,val); }catch(e){ console.warn('IndexedDB Migrationsfehler',key,e); }
+        } else {
+          val=(key==='td_settings')?{}:(key==='td_logo'?'':[]);
+        }
+      }
+      Cache[key]=val;
+    }
+  })();
+  return _storeReady;
+}
 
 // ══════════════════════════════════════════════
 // SUPABASE CLOUD
@@ -221,7 +297,7 @@ const Supa = {
       if(cloudClients){
         const cloudIds=new Set(cloudClients.map(c=>String(c.id)));
         const localOnly=DB.clients().filter(c=>!cloudIds.has(String(c.id)));
-        localStorage.setItem('td_clients', JSON.stringify([...cloudClients, ...localOnly]));
+        DB._set('td_clients', [...cloudClients, ...localOnly]);
       }
       if(cloudSessions){
         const parsed=cloudSessions.map(s=>({...s,
@@ -229,13 +305,14 @@ const Supa = {
         }));
         const cloudIds=new Set(parsed.map(s=>String(s.id)));
         const localOnly=DB.sessions().filter(s=>!cloudIds.has(String(s.id)));
-        localStorage.setItem('td_sessions', JSON.stringify([...parsed, ...localOnly]));
+        DB._set('td_sessions', [...parsed, ...localOnly]);
       }
       if(settings){
         const obj=DB.settings();
         settings.forEach(r=>{ obj[r.key]=r.value; });
-        localStorage.setItem('td_settings', JSON.stringify(obj));
+        DB._set('td_settings', obj);
       }
+      localStorage.setItem('td_last_sync_ok', String(Date.now()));
       _syncIcon('✅'); return true;
     }catch(e){ _syncIcon('⚠️'); return false; }
   },
@@ -292,6 +369,7 @@ const Supa = {
       if(settingRows.length) jobs.push(this._req('app_settings','POST',settingRows));
       const results=await Promise.all(jobs);
       const allOk=results.every(r=>r!==null);
+      if(allOk) localStorage.setItem('td_last_sync_ok', String(Date.now()));
       _syncIcon(allOk?'✅':'⚠️');
       return {ok:allOk, clients:clients.length, sessions:sessions.length};
     }catch(e){_syncIcon('⚠️'); return {ok:false};}
@@ -308,25 +386,52 @@ function _syncIcon(s){
 }
 
 // ══════════════════════════════════════════════
+// SYNC-WARNBANNER – dauerhaft sichtbar, falls seit
+// Tagen keine Cloud-Synchronisierung mehr geklappt hat
+// (z.B. weil das Supabase-Projekt pausiert wurde).
+// ══════════════════════════════════════════════
+function checkSyncHealth(){
+  const banner=document.getElementById('sync-warn-banner');
+  if(!Supa.isConfigured()){ if(banner) banner.remove(); return; }
+  const last=parseInt(localStorage.getItem('td_last_sync_ok')||'0',10);
+  const daysSince = last ? (Date.now()-last)/86400000 : Infinity;
+  if(daysSince>=2){
+    if(banner) return; // schon sichtbar
+    const days = last ? Math.floor(daysSince) : null;
+    const b=document.createElement('div');
+    b.id='sync-warn-banner';
+    b.style.cssText='background:#FDEDEC;border-bottom:2px solid #C0392B;padding:10px 16px;font-size:.85em;color:#7B241C;text-align:center;position:sticky;top:56px;z-index:99;';
+    b.innerHTML=`⚠️ <strong>Seit ${days!==null?days+' Tagen':'unbekannter Zeit'} keine erfolgreiche Cloud-Synchronisierung.</strong> Neue Einträge sind evtl. nur lokal auf diesem Gerät gespeichert. Prüfe deine Internetverbindung und ob dein Supabase-Projekt pausiert wurde (supabase.com einloggen und nachsehen).
+      <div style="margin-top:8px;">
+        <button onclick="exportData()" style="background:#C0392B;color:white;border:none;border-radius:7px;padding:6px 14px;font-size:.92em;cursor:pointer;">💾 Jetzt lokale Sicherung herunterladen</button>
+      </div>`;
+    const homeView=document.getElementById('v-home');
+    homeView.parentNode.insertBefore(b, homeView);
+  } else if(banner){
+    banner.remove();
+  }
+}
+
+// ══════════════════════════════════════════════
 // DATENBANK (localStorage + Cloud-Sync)
 // ══════════════════════════════════════════════
 const DB = {
-  _get(k){try{return JSON.parse(localStorage.getItem(k)||'[]');}catch{return [];}},
+  _get(k){ return Cache[k] ?? (k==='td_settings'?{}:[]); },
   _set(k,v){
-    localStorage.setItem(k,JSON.stringify(v));
+    Cache[k]=v;
+    IDB.set(k,v).catch(e=>{
+      console.error('IndexedDB Speicherfehler:',k,e);
+      toast('⚠️ Hintergrund-Speicherung fehlgeschlagen: '+(e.message||'unbekannt'),5000,'terr');
+    });
   },
 
   // Settings
-  settings(){try{return JSON.parse(localStorage.getItem('td_settings')||'{}');}catch{return {};}},
+  settings(){ return this._get('td_settings'); },
   saveSettings(s){
-    localStorage.setItem('td_settings',JSON.stringify(s));
+    this._set('td_settings',s);
     Supa.push('settings',s);
   },
   getSetting(k,def=''){return this.settings()[k]??def;},
-
-  // Diktier-Vokabular (Fachbegriff-Korrekturen für die Spracherkennung)
-  vocab(){try{return JSON.parse(localStorage.getItem('td_vocab')||'[]');}catch{return [];}},
-  saveVocab(v){localStorage.setItem('td_vocab',JSON.stringify(v));},
 
   // Clients
   clients(){return this._get('td_clients');},
@@ -382,6 +487,12 @@ const DB = {
 // UTILS
 // ══════════════════════════════════════════════
 function today(){return new Date().toISOString().slice(0,10);}
+
+// Markierung fuer per Schnellnotiz erfasste, noch nicht einsortierte Protokolle.
+// Wird dem "observations"-Feld vorangestellt - keine Supabase-Spaltenaenderung noetig.
+const QN_MARK='⟪SCHNELLNOTIZ⟫';
+function isUnsorted(s){ return !!(s && s.observations && s.observations.startsWith(QN_MARK)); }
+function qnRawText(s){ return isUnsorted(s) ? s.observations.slice(QN_MARK.length) : (s.observations||''); }
 function fmtDate(d){
   if(!d)return '';
   try{const dt=new Date(d+'T12:00:00');return dt.toLocaleDateString('de-DE',{day:'2-digit',month:'long',year:'numeric'});}
@@ -489,10 +600,11 @@ function renderHome(){
   if(sessions.length){
     sessions.forEach(s=>{
       const c=DB.client(s.client_id);
+      const unsorted=isUnsorted(s);
       html+=`<div class="si" onclick="showSession(${s.id})">
         <div class="av">🐴</div>
         <div class="si-info">
-          <div class="si-name">${esc(s.horse_name)}</div>
+          <div class="si-name">${esc(s.horse_name)}${unsorted?' <span class="badge bp2" style="font-size:.72em;">🎙️ unsortiert</span>':''}</div>
           <div class="si-sub">${esc(c?c.name:'Unbekannt')}</div>
         </div>
         <span style="color:var(--mid);font-size:1.2em;">›</span>
@@ -505,10 +617,10 @@ function renderHome(){
       <button class="btn bp" onclick="nav('neu')">+ Neue Einheit</button></div>`;
   }
 
-  if(sessions.length){
-    html+=`<div style="margin-top:18px;">
-      <button class="btn bp bf" onclick="nav('neu')">🎙️ Neue Trainingseinheit</button></div>`;
-  }
+  html+=`<div style="margin-top:18px;display:flex;flex-direction:column;gap:8px;">
+    <button class="btn bp bf" onclick="nav('neu')">🎙️ Neue Trainingseinheit</button>
+    <button class="btn bo bf" onclick="renderSchnell()" style="color:var(--ora,#B0521E);border-color:var(--ora,#B0521E);">🚗 Schnellnotiz (unterwegs diktieren)</button>
+  </div>`;
 
   document.getElementById('v-home').innerHTML=html;
 }
@@ -532,6 +644,9 @@ function renderNeu(prefillClientId=null){
   neuPhotos=[];
 
   document.getElementById('v-neu').innerHTML=`
+  <div class="info-box" style="margin-bottom:14px;">
+    🚗 Unterwegs oder wenig Zeit? <button class="slink" onclick="renderSchnell()">→ Schnellnotiz diktieren</button> (später in Ruhe einsortieren)
+  </div>
   <div class="fg">
     <label>Kunde / Pferd</label>
     ${clients.length
@@ -687,6 +802,118 @@ async function saveNeu(){
 }
 
 // ══════════════════════════════════════════════
+// VIEW: SCHNELLNOTIZ (frei diktieren, spaeter einsortieren)
+// ══════════════════════════════════════════════
+function renderSchnell(){
+  nav('neu');
+  _inForm=true;
+  setTopbar('‹ <span style="cursor:pointer;" onclick="nav(\'home\')">Zurück</span> &nbsp; 🚗 Schnellnotiz','');
+  document.getElementById('tb-title').onclick=()=>nav('home');
+
+  const clients=DB.clients();
+  const optHtml=clients.length
+    ? clients.map(c=>`<option value="${c.id}">${esc(c.horse_name)} – ${esc(c.name)}</option>`).join('')
+    : '';
+
+  document.getElementById('v-neu').innerHTML=`
+  <div class="info-box" style="margin-bottom:14px;">
+    🎙️ Alles in einem Rutsch diktieren – Auffälligkeiten, Übungen, Hausaufgabe zusammen. Die Rubriken ordnest du später bequem zu.
+    <div style="margin-top:6px;"><button class="slink" onclick="renderNeu()">→ Stattdessen normal erfassen (mit Rubriken)</button></div>
+  </div>
+  <div class="fg">
+    <label>Kunde / Pferd</label>
+    ${clients.length
+      ? `<select id="qn-client"><option value="">— Bitte wählen —</option>${optHtml}</select>`
+      : `<div class="info-box" style="margin-bottom:8px;">⚠️ Noch keine Kunden angelegt.</div>`}
+    <div style="margin-top:7px;"><button class="btn bo bsm" onclick="showNewClient()">+ Neuen Kunden anlegen</button></div>
+  </div>
+  <div class="fg"><label>Datum</label><input type="date" id="qn-date" value="${today()}"></div>
+  <hr class="div">
+  <div class="fg">
+    <label>🎙️ Frei diktieren</label>
+    <div style="display:flex;gap:8px;margin-bottom:7px;align-items:center;">
+      <button class="spbtn" id="sp-qn" onclick="toggleSpeech('qn-text','sp-qn','st-qn')">🎙️ Diktieren</button>
+      <span class="spst" id="st-qn"></span>
+    </div>
+    <textarea id="qn-text" rows="9" placeholder="Auffälligkeiten, Übungen, Hausaufgaben – alles zusammen, wie es dir gerade einfällt…"></textarea>
+  </div>
+  <button class="btn bp bf" id="qn-save-btn" onclick="saveQuickNote(this)">💾 Schnellnotiz speichern</button>
+  <div style="height:10px;"></div>`;
+}
+
+function saveQuickNote(btn){
+  if(btn?.disabled) return;
+  const clientId=parseInt(document.getElementById('qn-client')?.value||0);
+  const text=(document.getElementById('qn-text')?.value||'').trim();
+  if(!clientId){ toast('⚠️ Bitte Kunde/Pferd wählen'); return; }
+  if(!text){ toast('⚠️ Bitte etwas diktieren oder eintippen'); return; }
+  const client=DB.client(clientId);
+  if(!client){ toast('⚠️ Kunde nicht gefunden'); return; }
+
+  lockBtn(btn);
+  const safetyTimer=setTimeout(()=>{ unlockBtn(btn); toast('⚠️ Zeitüberschreitung – bitte erneut versuchen',4000,'terr'); }, 10000);
+  try{
+    const s=DB.newSession({
+      client_id:clientId,
+      horse_name:client.horse_name,
+      date:document.getElementById('qn-date')?.value||today(),
+      location:'',
+      observations:QN_MARK+text,
+      exercises_done:'',
+      homework:'',
+      rating:0,
+      notes:'',
+      photos:[],
+    });
+    clearTimeout(safetyTimer);
+    _inForm=false;
+    confirmSaved('✅ Schnellnotiz gespeichert!', btn);
+    setTimeout(()=>nav('home'),1400);
+  }catch(e){
+    clearTimeout(safetyTimer);
+    unlockBtn(btn);
+    toast('❌ Speicherfehler: '+(e.message||'Unbekannt'),5000,'terr');
+    console.error('saveQuickNote:', e);
+  }
+}
+
+// ══════════════════════════════════════════════
+// SCHNELLNOTIZ EINSORTIEREN
+// ══════════════════════════════════════════════
+function showSortSession(id){
+  const s=DB.session(id);
+  if(!s)return;
+  const raw=qnRawText(s);
+  const activeViewId='v-'+currentView;
+
+  setTopbar('‹ <span style="cursor:pointer;" onclick="showSession('+id+')">Zurück</span> &nbsp; 🗂️ Einsortieren','');
+  document.getElementById('tb-title').onclick=()=>showSession(id);
+
+  document.getElementById(activeViewId).innerHTML=`
+  <div class="card">
+    <div class="ct">🎙️ Deine Schnellnotiz (Rohtext)</div>
+    <p class="pv" style="color:var(--mid);">${esc(raw)}</p>
+    <div style="font-size:.78em;color:var(--mid);margin-top:6px;">Passende Stellen unten in die richtigen Felder verschieben oder direkt bearbeiten.</div>
+  </div>
+  <div class="fg"><label>⚠️ Auffälligkeiten</label><textarea id="qs-obs" rows="5">${esc(raw)}</textarea></div>
+  <div class="fg"><label>🎯 Schwerpunkte der Einheit</label><textarea id="qs-ex" rows="4"></textarea></div>
+  <div class="fg"><label>📚 Hausaufgaben</label><textarea id="qs-hw" rows="4"></textarea></div>
+  <button class="btn bp bf" onclick="saveSortSession(${id})">✅ Einsortierung speichern</button>
+  <div style="height:10px;"></div>`;
+}
+
+function saveSortSession(id){
+  const s=DB.session(id);
+  if(!s)return;
+  s.observations=(document.getElementById('qs-obs')?.value||'').trim();
+  s.exercises_done=(document.getElementById('qs-ex')?.value||'').trim();
+  s.homework=(document.getElementById('qs-hw')?.value||'').trim();
+  DB.saveSession(s);
+  toast('✅ Einsortiert!',3000,'tok');
+  showSession(id);
+}
+
+// ══════════════════════════════════════════════
 // SESSION DETAIL (Modal-ähnlich)
 // ══════════════════════════════════════════════
 function showSession(id){
@@ -696,11 +923,15 @@ function showSession(id){
   const stars='⭐'.repeat(s.rating||0)+'☆'.repeat(5-(s.rating||0));
 
   setTopbar(`‹ <span style="cursor:pointer;" onclick="nav('${currentView}')">Zurück</span> &nbsp; 📋 Protokoll`,
-    `<button class="tb-btn" onclick="editSession(${id})">✏️</button>`);
+    isUnsorted(s)
+      ? `<button class="tb-btn" onclick="showSortSession(${id})">🗂️</button>`
+      : `<button class="tb-btn" onclick="editSession(${id})">✏️</button>`);
 
   // Session-View temporär übernehmen
   const activeViewId='v-'+currentView;
   const prevContent=document.getElementById(activeViewId).innerHTML;
+
+  const unsorted=isUnsorted(s);
 
   document.getElementById(activeViewId).innerHTML=`
   <div class="card">
@@ -721,10 +952,18 @@ function showSession(id){
     </div>
   </div>
 
+  ${unsorted?`
+  <div class="card" style="border:2px solid var(--ora,#B0521E);">
+    <div class="ct">🎙️ Schnellnotiz – noch unsortiert</div>
+    <p class="pv" style="color:var(--mid);">${esc(qnRawText(s))}</p>
+    <button class="btn bp bf" onclick="showSortSession(${id})" style="margin-top:8px;">🗂️ Jetzt einsortieren</button>
+  </div>
+  `:`
   ${s.observations?`<div class="card"><div class="ct">⚠️ Auffälligkeiten</div><p class="pv">${esc(s.observations)}</p></div>`:''}
   ${s.exercises_done?`<div class="card"><div class="ct">🎯 Schwerpunkte</div><p class="pv">${esc(s.exercises_done)}</p></div>`:''}
   ${s.homework?`<div class="card"><div class="ct">📚 Hausaufgaben</div><p class="pv">${esc(s.homework)}</p></div>`:''}
   ${s.notes?`<div class="card"><div class="ct">📌 Fokus der nächsten Einheit</div><p class="pv">${esc(s.notes)}</p></div>`:''}
+  `}
 
   ${(s.photos&&s.photos.length)?`<div class="card"><div class="ct">📸 Fotos</div>
     <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:6px;">
@@ -733,9 +972,13 @@ function showSession(id){
 
   <div class="card">
     <div class="ct">Aktionen</div>
+    ${unsorted?`
+    <div style="font-size:.85em;color:var(--mid);margin-bottom:8px;">Erst einsortieren, dann kannst du teilen, als PDF speichern oder vorlesen lassen.</div>
+    `:`
     <button class="btn bo bf" onclick="shareProtokoll(${id})" style="margin-bottom:8px;">📤 Per WhatsApp / Text teilen</button>
     <button class="btn bo bf" onclick="generatePDF(${id})" style="margin-bottom:8px;">📄 Als PDF speichern</button>
     ${(s.observations||s.homework||s.exercises_done||s.notes)?`<button class="btn bo bf" id="tts-btn" onclick="speakSession(${id})" style="margin-bottom:8px;">🔊 Vorlesen (Vorbereitung)</button>`:''}
+    `}
     <button class="btn bd bf" onclick="delSession(${id},'${activeViewId}')">🗑️ Protokoll löschen</button>
   </div>
   <button class="btn bo bf" onclick="showClientDetail(${s.client_id},'${activeViewId}')">👤 Zum Kundenprofil</button>
@@ -889,7 +1132,7 @@ function saveEdit(id){
 // ══════════════════════════════════════════════
 // VIEW: KUNDEN
 // ══════════════════════════════════════════════
-function renderKunden(query='', keepFocus=false){
+function renderKunden(query=''){
   setTopbar('👤 Kunden','<button class="tb-btn" onclick="showNewClient()">+ Neu</button>');
   let clients=DB.clients();
   if(query){
@@ -897,10 +1140,14 @@ function renderKunden(query='', keepFocus=false){
     clients=clients.filter(c=>c.name.toLowerCase().includes(q)||c.horse_name.toLowerCase().includes(q));
   }
 
-  let listHtml='';
+  let html=`<div class="fg" style="display:flex;gap:8px;">
+    <input type="text" id="ksearch" placeholder="🔍 Pferd oder Kunde suchen…" value="${esc(query)}" onkeydown="if(event.key==='Enter'){renderKunden(this.value);}" style="flex:1;">
+    <button class="btn bo" onclick="renderKunden(document.getElementById('ksearch').value)" style="white-space:nowrap;">🔍 Suchen</button>
+  </div>`;
+
   if(clients.length){
     clients.forEach(c=>{
-      listHtml+=`<div class="si" onclick="showClientDetail(${c.id})">
+      html+=`<div class="si" onclick="showClientDetail(${c.id})">
         <div class="av">🐴</div>
         <div class="si-info">
           <div class="si-name">${esc(c.horse_name)}</div>
@@ -910,20 +1157,12 @@ function renderKunden(query='', keepFocus=false){
       </div>`;
     });
   } else {
-    listHtml+=`<div class="empty"><div class="ei">🐴</div>
+    html+=`<div class="empty"><div class="ei">🐴</div>
       ${query?`<div style="font-weight:600;margin-bottom:8px;">Kein Treffer für „${esc(query)}"</div><button class="btn bo" onclick="renderKunden('')">Alle Kunden</button>`
              :`<div style="font-weight:600;margin-bottom:8px;">Noch keine Kunden</div><button class="btn bp" onclick="showNewClient()">+ Ersten Kunden anlegen</button>`}</div>`;
   }
 
-  // Beim Tippen wird nur die Ergebnisliste aktualisiert, NICHT das Eingabefeld selbst –
-  // sonst verliert das Feld bei jedem Tastendruck Fokus & Cursorposition.
-  if(keepFocus && document.getElementById('ksearch')){
-    document.getElementById('kunden-list').innerHTML=listHtml;
-  } else {
-    document.getElementById('v-kunden').innerHTML=
-      `<div class="fg"><input type="text" id="ksearch" placeholder="🔍 Pferd oder Kunde suchen…" value="${esc(query)}" oninput="renderKunden(this.value,true)"></div>`+
-      `<div id="kunden-list">${listHtml}</div>`;
-  }
+  document.getElementById('v-kunden').innerHTML=html;
   // FAB
   if(!document.getElementById('kunden-fab')){
     const fab=document.createElement('button');
@@ -936,7 +1175,7 @@ function renderKunden(query='', keepFocus=false){
 // ══════════════════════════════════════════════
 // VIEW: ALLE PROTOKOLLE
 // ══════════════════════════════════════════════
-function renderProtokolle(query='', keepFocus=false){
+function renderProtokolle(query=''){
   setTopbar('📋 Alle Protokolle','');
   let sessions=[...DB.sessions()].sort((a,b)=>b.date.localeCompare(a.date));
   if(query){
@@ -948,16 +1187,19 @@ function renderProtokolle(query='', keepFocus=false){
              (c&&c.name.toLowerCase().includes(q));
     });
   }
-  let listHtml='';
+  let html=`<div class="fg" style="display:flex;gap:8px;">
+    <input type="text" id="psearch" placeholder="🔍 Pferd, Kunde oder Datum…" value="${esc(query)}" onkeydown="if(event.key==='Enter'){renderProtokolle(this.value);}" style="flex:1;">
+    <button class="btn bo" onclick="renderProtokolle(document.getElementById('psearch').value)" style="white-space:nowrap;">🔍 Suchen</button>
+  </div>`;
   if(sessions.length){
     sessions.forEach(s=>{
       const c=DB.client(s.client_id);
       const stars=s.rating?'⭐'.repeat(s.rating):'';
-      listHtml+=`<div class="si" style="cursor:default;padding:0;overflow:hidden;gap:0;">
+      html+=`<div class="si" style="cursor:default;padding:0;overflow:hidden;gap:0;">
         <div style="flex:1;display:flex;align-items:center;gap:12px;padding:13px 15px;cursor:pointer;" onclick="showSession(${s.id})">
           <div class="av">📅</div>
           <div class="si-info">
-            <div class="si-name">${esc(s.horse_name)}</div>
+            <div class="si-name">${esc(s.horse_name)}${isUnsorted(s)?' <span class="badge bp2" style="font-size:.7em;">🎙️ unsortiert</span>':''}</div>
             <div class="si-sub">${fmtDate(s.date)}${c?' · '+esc(c.name):''}${stars?' · '+stars:''}</div>
           </div>
           <span style="color:var(--mid);font-size:1.2em;">›</span>
@@ -966,21 +1208,13 @@ function renderProtokolle(query='', keepFocus=false){
       </div>`;
     });
   } else {
-    listHtml+=`<div class="empty"><div class="ei">📋</div>
+    html+=`<div class="empty"><div class="ei">📋</div>
       ${query
         ?`<div style="font-weight:600;margin-bottom:8px;">Kein Treffer für „${esc(query)}"</div><button class="btn bo" onclick="renderProtokolle('')">Alle Protokolle</button>`
         :`<div style="font-weight:600;margin-bottom:8px;">Noch keine Protokolle</div><button class="btn bp" onclick="nav('neu')">+ Erste Einheit anlegen</button>`}
     </div>`;
   }
-  // Beim Tippen wird nur die Ergebnisliste aktualisiert, NICHT das Eingabefeld selbst –
-  // sonst verliert das Feld bei jedem Tastendruck Fokus & Cursorposition.
-  if(keepFocus && document.getElementById('psearch')){
-    document.getElementById('protokolle-list').innerHTML=listHtml;
-  } else {
-    document.getElementById('v-protokolle').innerHTML=
-      `<div class="fg"><input type="text" id="psearch" placeholder="🔍 Pferd, Kunde oder Datum…" value="${esc(query)}" oninput="renderProtokolle(this.value,true)"></div>`+
-      `<div id="protokolle-list">${listHtml}</div>`;
-  }
+  document.getElementById('v-protokolle').innerHTML=html;
 }
 
 function showClientDetail(cid){
@@ -1016,11 +1250,16 @@ function showClientDetail(cid){
 
   ${last?`<div class="card" style="border-left:4px solid var(--s);">
     <div class="ct">📋 Letzte Einheit – ${fmtDate(last.date)}</div>
+    ${isUnsorted(last)?`
+    <div style="font-size:.9em;color:var(--mid);">🎙️ Unsortierte Schnellnotiz vorhanden.</div>
+    <button class="btn bo bsm" style="margin-top:9px;" onclick="showSortSession(${last.id})">🗂️ Jetzt einsortieren</button>
+    `:`
     ${last.observations?`<div style="margin-bottom:9px;"><div style="font-size:.72em;color:var(--p);font-weight:700;margin-bottom:3px;">AUFFÄLLIGKEITEN</div>
     <div style="font-size:.9em;">${esc(last.observations.slice(0,200))}${last.observations.length>200?'…':''}</div></div>`:''}
     ${last.homework?`<div><div style="font-size:.72em;color:var(--p);font-weight:700;margin-bottom:3px;">HAUSAUFGABEN</div>
     <div style="font-size:.9em;">${esc(last.homework.slice(0,200))}${last.homework.length>200?'…':''}</div></div>`:''}
     <button class="btn bo bsm" style="margin-top:11px;" onclick="showSession(${last.id})">Vollständig ansehen</button>
+    `}
   </div>`:''}
 
   <div class="sh"><div class="stit">📂 Verlauf (${sessions.length} Einheiten)</div></div>
@@ -1029,10 +1268,11 @@ function showClientDetail(cid){
       <div style="width:36px;height:36px;border-radius:50%;background:var(--bg);border:2px solid var(--s);display:flex;align-items:center;justify-content:center;font-size:.85em;flex-shrink:0;">${i+1}</div>
       <div class="si-info">
         <div class="si-name" style="font-size:.93em;">${fmtDate(s.date)}</div>
-        ${s.homework?`<div class="si-sub">📚 ${esc(s.homework.slice(0,60))}${s.homework.length>60?'…':''}</div>`
+        ${isUnsorted(s)?`<div class="si-sub">🎙️ unsortierte Schnellnotiz</div>`
+          :s.homework?`<div class="si-sub">📚 ${esc(s.homework.slice(0,60))}${s.homework.length>60?'…':''}</div>`
           :s.observations?`<div class="si-sub">⚠️ ${esc(s.observations.slice(0,60))}${s.observations.length>60?'…':''}</div>`:''}
       </div>
-      <span class="badge ${s.sent?'bs2':s.approved?'ba':'bp2'}">${s.sent?'📲':s.approved?'✅':'⏳'}</span>
+      <span class="badge ${isUnsorted(s)?'bp2':(s.sent?'bs2':s.approved?'ba':'bp2')}">${isUnsorted(s)?'🎙️':(s.sent?'📲':s.approved?'✅':'⏳')}</span>
     </div>`).join('')
     :`<div class="empty" style="padding:20px;"><div>Noch keine Einheiten</div></div>`}
 
@@ -1172,34 +1412,17 @@ function renderSettings(){
     <div class="fg">
       <label>Firmen-Logo (erscheint oben rechts im Protokoll)</label>
       <div style="display:flex;align-items:center;gap:14px;flex-wrap:wrap;margin-bottom:8px;">
-        ${localStorage.getItem('td_logo')?`<img src="${localStorage.getItem('td_logo')}" style="height:52px;max-width:140px;object-fit:contain;border-radius:7px;border:1px solid var(--bor);background:#fff;padding:4px;">`:'<div style="width:80px;height:52px;border:2px dashed var(--bor);border-radius:7px;display:flex;align-items:center;justify-content:center;color:var(--mid);font-size:.8em;">Kein Logo</div>'}
+        ${Cache.td_logo?`<img src="${Cache.td_logo}" style="height:52px;max-width:140px;object-fit:contain;border-radius:7px;border:1px solid var(--bor);background:#fff;padding:4px;">`:'<div style="width:80px;height:52px;border:2px dashed var(--bor);border-radius:7px;display:flex;align-items:center;justify-content:center;color:var(--mid);font-size:.8em;">Kein Logo</div>'}
         <div style="display:flex;flex-direction:column;gap:6px;">
           <input type="file" id="logo-input" accept="image/*" style="display:none;" onchange="uploadLogo(this)">
           <button class="btn bo bsm" onclick="document.getElementById('logo-input').click()">📷 Logo hochladen</button>
-          ${localStorage.getItem('td_logo')?'<button class="btn bd bsm" onclick="removeLogo()">🗑 Logo entfernen</button>':''}
+          ${Cache.td_logo?'<button class="btn bd bsm" onclick="removeLogo()">🗑 Logo entfernen</button>':''}
         </div>
       </div>
       <div style="font-size:.78em;color:var(--mid);">PNG oder JPG empfohlen. Wird automatisch komprimiert.</div>
     </div>
   </div>
   <button class="btn bp bf" onclick="saveSettings()" style="margin-bottom:12px;">💾 Einstellungen speichern</button>
-
-  <div class="card">
-    <div class="ct">🎙️ Fachbegriffe-Vokabular (Diktierfunktion)</div>
-    <p style="font-size:.83em;color:var(--mid);margin-bottom:13px;">
-      Wird ein Fachbegriff beim Diktieren immer wieder falsch erkannt (z. B. „Wieder Rist" statt „Widerrist"), trage hier eine Korrektur ein. Die App ersetzt den Text ab sofort bei jedem weiteren Diktat automatisch – die Erkennung „lernt" so mit.
-    </p>
-    <div id="vocab-list">${renderVocabListHtml()}</div>
-    <div class="row2" style="margin-top:4px;">
-      <div class="fg" style="margin-bottom:8px;"><label>Wird erkannt als</label><input type="text" id="vocab-from" placeholder="z. B. Wieder Rist"></div>
-      <div class="fg" style="margin-bottom:8px;"><label>Soll heißen</label><input type="text" id="vocab-to" placeholder="z. B. Widerrist"></div>
-    </div>
-    <button class="btn bp bf" onclick="addVocab()">+ Korrektur hinzufügen</button>
-    <div style="font-size:.78em;color:var(--mid);margin-top:10px;">
-      Tipp: Diktiere einmal den Fachbegriff, kopiere den falsch erkannten Text hierher und trage rechts die richtige Schreibweise ein. Gilt für alle Diktierfelder in der App.
-    </div>
-  </div>
-
 
   <div class="card" style="border:2px solid ${Supa.isConfigured()?'var(--grn)':'var(--s)'};">
     <div class="ct">☁️ Supabase Cloud-Datenbank</div>
@@ -1272,10 +1495,13 @@ CREATE POLICY "allow all" ON app_settings FOR ALL USING (true) WITH CHECK (true)
     <button class="btn bo bf" onclick="loadDemo()">Demo-Daten laden</button>
   </div>
 
-  <div style="text-align:center;font-size:.75em;color:var(--mid);margin-top:20px;padding-bottom:8px;">
-    TrainingsDoku Pro · MVP v1.0<br>
-    Alle Daten bleiben lokal auf diesem Gerät<br>
-    Kein Server · Keine Cloud · Keine Kosten
+  <div class="card">
+    <div class="ct">ℹ️ Info</div>
+    <div style="font-size:.85em;color:var(--mid);line-height:1.8;">
+      TrainingsDoku Pro · Cloud-Version · Version 1.0<br>
+      © 2026 Susanne Griese · Entwickelt von Susanne Griese<br>
+      Kontakt: susanne.griese@gmx.de
+    </div>
   </div>`;
 }
 
@@ -1311,10 +1537,10 @@ function uploadLogo(input){
       c.width=w; c.height=h;
       c.getContext('2d').drawImage(img,0,0,w,h);
       try{
-        localStorage.setItem('td_logo',c.toDataURL('image/png'));
+        DB._set('td_logo',c.toDataURL('image/png'));
         toast('✅ Logo gespeichert!',2500,'tok');
       }catch(err){
-        toast('❌ Logo zu groß – bitte kleinere Datei wählen',4000,'terr');
+        toast('❌ Logo konnte nicht verarbeitet werden',4000,'terr');
       }
       renderSettings();
     };
@@ -1325,38 +1551,8 @@ function uploadLogo(input){
 }
 
 function removeLogo(){
-  localStorage.removeItem('td_logo');
+  DB._set('td_logo','');
   toast('Logo entfernt',2000);
-  renderSettings();
-}
-
-// ══════════════════════════════════════════════
-// DIKTIER-VOKABULAR (Fachbegriff-Korrekturen)
-// ══════════════════════════════════════════════
-function renderVocabListHtml(){
-  const vocab=DB.vocab();
-  if(!vocab.length) return `<div style="font-size:.85em;color:var(--mid);padding:6px 0;">Noch keine Korrekturen hinterlegt.</div>`;
-  return vocab.map((v,i)=>`<div style="display:flex;align-items:center;gap:8px;padding:8px 0;border-bottom:1px solid var(--bor);">
-    <div style="flex:1;font-size:.88em;"><span style="color:var(--mid);text-decoration:line-through;">${esc(v.from)}</span> → <strong>${esc(v.to)}</strong></div>
-    <button class="btn bd bsm" onclick="delVocab(${i})">🗑</button>
-  </div>`).join('');
-}
-
-function addVocab(){
-  const from=document.getElementById('vocab-from').value.trim();
-  const to=document.getElementById('vocab-to').value.trim();
-  if(!from||!to){ toast('Bitte beide Felder ausfüllen',3000,'terr'); return; }
-  const vocab=DB.vocab();
-  vocab.push({from,to});
-  DB.saveVocab(vocab);
-  toast('✅ Korrektur gespeichert!',2500,'tok');
-  renderSettings();
-}
-
-function delVocab(i){
-  const vocab=DB.vocab();
-  vocab.splice(i,1);
-  DB.saveVocab(vocab);
   renderSettings();
 }
 
@@ -1377,9 +1573,9 @@ function importData(input){
   r.onload=e=>{
     try{
       const d=JSON.parse(e.target.result);
-      if(d.clients)localStorage.setItem('td_clients',JSON.stringify(d.clients));
-      if(d.sessions)localStorage.setItem('td_sessions',JSON.stringify(d.sessions));
-      if(d.settings)localStorage.setItem('td_settings',JSON.stringify(d.settings));
+      if(d.clients) DB._set('td_clients',d.clients);
+      if(d.sessions) DB._set('td_sessions',d.sessions);
+      if(d.settings) DB._set('td_settings',d.settings);
       toast('✅ Daten importiert!');
       setTimeout(()=>renderSettings(),500);
     }catch{toast('❌ Datei konnte nicht gelesen werden');}
@@ -1470,116 +1666,26 @@ function loadDemo(){
 }
 
 // ══════════════════════════════════════════════
-// SPEECH RECOGNITION
+// DIKTIEREN – Hinweis auf System-Diktierfunktion
 // ══════════════════════════════════════════════
-// iOS/iPadOS: continuous:true + interimResults:true scheitern weil rec.start()
-// nach onend ohne User-Gesture blockiert wird → Single-Shot-Modus auf iOS.
-// Desktop/Android Chrome: continuous:true bleibt aktiv.
-let _activeRec=null;
-const SR=window.SpeechRecognition||window.webkitSpeechRecognition;
+// Die frühere Browser-Spracherkennung (Web Speech API) war langsam und
+// fehleranfällig, weil sie bei jeder Sprechpause neu starten musste und
+// Audio an Google-Server schickte. Die Diktierfunktion des Betriebssystems
+// läuft lokal auf dem Gerät und ist auf allen Plattformen zuverlässiger.
 const _isIOS=/iPad|iPhone|iPod/.test(navigator.userAgent)&&!window.MSStream;
-
-// Fachbegriff-Korrekturen (Vokabular): ersetzt fehlerkannte Wörter/Phrasen
-// automatisch durch die in den Einstellungen hinterlegte korrekte Schreibweise.
-function applyVocabCorrections(text){
-  const vocab=DB.vocab();
-  if(!vocab.length||!text)return text;
-  let result=text;
-  vocab.forEach(({from,to})=>{
-    if(!from||!to)return;
-    const escaped=from.replace(/[.*+?^${}()|[\]\\]/g,'\\$&');
-    // Wortgrenzen inkl. deutscher Umlaute berücksichtigen
-    const re=new RegExp('(^|[^\\wäöüßÄÖÜ])'+escaped+'([^\\wäöüßÄÖÜ]|$)','gi');
-    result=result.replace(re,(m,p1,p2)=>p1+to+p2);
-  });
-  return result;
-}
+const _isAndroid=/Android/.test(navigator.userAgent);
+const _isMac=/Macintosh/.test(navigator.userAgent)&&!_isIOS;
 
 function toggleSpeech(targetId,btnId,statusId){
-  if(!SR){
-    if(_isIOS){ toast('Tippe ins Textfeld → Mikrofon 🎤 auf der Tastatur nutzen!', 4000); }
-    else { toast('⚠️ Spracherkennung in Chrome oder Edge verfügbar (nicht Firefox)', 4000); }
-    const t=document.getElementById(targetId);
-    if(t) t.focus();
-    return;
+  const t=document.getElementById(targetId);
+  if(t) t.focus();
+  if(_isIOS||_isAndroid){
+    toast('🎙️ Mikrofon-Taste auf der Bildschirmtastatur antippen', 4000);
+  } else if(_isMac){
+    toast('🎙️ Fn-Taste zweimal drücken für die Mac-Diktierfunktion', 4000);
+  } else {
+    toast('🎙️ Win + H drücken für die Windows-Spracheingabe', 4000);
   }
-
-  // Zweiter Klick = Stopp
-  if(_activeRec){ _activeRec.abort(); _activeRec=null; return; }
-
-  const target=document.getElementById(targetId);
-  const btn=document.getElementById(btnId);
-  const st=document.getElementById(statusId);
-  if(!target||!btn)return;
-
-  let final=target.value;
-  if(final&&!final.endsWith(' '))final+=' ';
-
-  btn.classList.add('rec'); btn.textContent='🔴 Stopp';
-  if(st) st.textContent='🎙️ Aufnahme läuft…';
-
-  function startRec(){
-    const rec=new SR();
-    rec.lang='de-DE'; rec.maxAlternatives=1;
-    if(_isIOS){
-      // iOS: Single-Shot – kein Auto-Restart (kein User-Gesture möglich)
-      rec.continuous=false; rec.interimResults=false;
-    } else {
-      // Desktop/Android: continuous, mit Auto-Restart nach Pause
-      rec.continuous=true; rec.interimResults=true;
-    }
-
-    rec.onresult=e=>{
-      let interim='',added='';
-      for(let i=e.resultIndex;i<e.results.length;i++){
-        if(e.results[i].isFinal) added+=e.results[i][0].transcript+' ';
-        else interim+=e.results[i][0].transcript;
-      }
-      if(added) final+=applyVocabCorrections(added);
-      target.value=final+(interim?'['+interim+']':'');
-    };
-
-    rec.onend=()=>{
-      if(!_isIOS && _activeRec){
-        // Chrome/Android: 150ms warten, dann neu starten
-        // (sofortiges rec.start() in onend blockiert manche Browser)
-        setTimeout(()=>{
-          if(!_activeRec) return; // Stopp wurde inzwischen gedrückt
-          try{ startRec(); }
-          catch(err){
-            btn.classList.remove('rec'); btn.textContent='🎙️ Diktieren';
-            target.value=final.trim();
-            if(st) st.textContent='';
-            _activeRec=null;
-          }
-        }, 150);
-        return;
-      }
-      // iOS oder Stopp gedrückt
-      btn.classList.remove('rec'); btn.textContent='🎙️ Diktieren';
-      target.value=final.trim();
-      if(st) st.textContent=(_isIOS&&final.trim())?'✅ Erkannt – nochmal tippen für mehr':'';
-      _activeRec=null;
-    };
-
-    rec.onerror=e=>{
-      // no-speech auf Desktop: onend kommt gleich und startet neu → ignorieren
-      if(e.error==='no-speech'&&!_isIOS&&_activeRec) return;
-      btn.classList.remove('rec'); btn.textContent='🎙️ Diktieren';
-      if(st) st.textContent='';
-      target.value=final.trim(); _activeRec=null;
-      if(e.error==='not-allowed'){
-        toast('❌ Mikrofon verweigert → Einstellungen → '+(
-          _isIOS?'Safari → Websites → Mikrofon':'Chrome → Datenschutz → Mikrofon'
-        )+' → erlauben',6000,'terr');
-      } else if(e.error!=='aborted'){
-        toast('Sprachfehler: '+e.error+' – bitte nochmal versuchen');
-      }
-    };
-
-    _activeRec=rec; rec.start();
-  }
-  startRec();
 }
 
 // ══════════════════════════════════════════════
@@ -1677,7 +1783,7 @@ function generatePDF(id){
   const trainer=cfg.trainer_name||'';
   const phone=cfg.phone||'';
   const email=cfg.email||'';
-  const logo=localStorage.getItem('td_logo')||'';
+  const logo=Cache.td_logo||'';
   const stars=s.rating?'★'.repeat(s.rating)+'☆'.repeat(5-s.rating):'';
   const contact=[trainer,phone,email].filter(Boolean).join(' · ');
 
@@ -1772,26 +1878,18 @@ function generatePDF(id){
 // START
 // ══════════════════════════════════════════════
 document.addEventListener('DOMContentLoaded',async ()=>{
+  await initStore();
   nav('home');
 
   // Sync-Icon initialisieren
   document.getElementById('sync-icon').textContent = Supa.isConfigured()?'☁️':'⬜';
-
-  // Browser-Hinweis für Spracherkennung
-  const isIOS=/iPad|iPhone|iPod/.test(navigator.userAgent);
-  const hasSR=!!(window.SpeechRecognition||window.webkitSpeechRecognition);
-  if(!hasSR && !isIOS){
-    const banner=document.createElement('div');
-    banner.style.cssText='background:#FEF0E4;border-bottom:2px solid #E67E22;padding:10px 16px;font-size:.83em;color:#6B3A00;text-align:center;position:sticky;top:56px;z-index:99;';
-    banner.innerHTML='🎤 Diktierfunktion: bitte <strong>Chrome</strong> oder <strong>Edge</strong> nutzen (nicht Firefox).';
-    document.body.insertBefore(banner, document.getElementById('v-home'));
-  }
 
   // Supabase: beim Start erst lokale Daten hochladen, dann Cloud-Stand laden
   if(Supa.isConfigured()){
     _syncIcon('⟳');
     await Supa.pushAll();   // Lokale Daten IMMER zuerst sichern
     const ok = await Supa.pullAll();
+    checkSyncHealth();
     if(ok){ renderHome(); }
   } else {
     // Hinweis: Supabase noch nicht eingerichtet
@@ -1819,6 +1917,7 @@ document.addEventListener('DOMContentLoaded',async ()=>{
     if(!document.hidden && Supa.isConfigured() && !_inForm){
       await Supa.pushAll();          // zuerst lokale Änderungen hochladen
       const ok = await Supa.pullAll(); // dann aktuellen Stand laden
+      checkSyncHealth();
       if(ok && !_inForm) render(currentView);
     }
   });
@@ -1828,10 +1927,12 @@ document.addEventListener('DOMContentLoaded',async ()=>{
     if(Supa.isConfigured() && !document.hidden && !_inForm){
       await Supa.pushAll();
       const ok = await Supa.pullAll();
+      checkSyncHealth();
       if(ok && !_inForm) render(currentView);
     }
   }, 3 * 60 * 1000);
 });
 </script>
+<div class="cr-bar">© 2026 Susanne Griese · Lizenziert für: [Käuferin]</div>
 </body>
 </html>
